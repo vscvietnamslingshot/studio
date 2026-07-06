@@ -1,0 +1,29 @@
+{
+  "name": "VSC Broadcast Studio Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bullseye",
+  "features": {},
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Broadcast Studio",
+      "onAutoForward": "openPreview"
+    }
+  },
+  "postCreateCommand": "npm install",
+  "customizations": {
+    "codespaces": {
+      "openFiles": [
+        "README.md",
+        "server.ts",
+        "src/App.tsx"
+      ]
+    },
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.tailwindcss"
+      ]
+    }
+  }
+}
