@@ -133,6 +133,11 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [cameraActive, setCameraActive] = useState(true);
   const [micActive, setMicActive] = useState(true);
+  const [mcMirrored, setMcMirrored] = useState(false);
+  const mcMirroredRef = useRef(false);
+  useEffect(() => {
+    mcMirroredRef.current = mcMirrored;
+  }, [mcMirrored]);
   
   // MC camera quality configurations
   const [hostResolution, setHostResolution] = useState<"1080p" | "720p" | "480p" | "360p">("720p");
@@ -444,6 +449,14 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
     }
   };
 
+  const setMcMirrorAndBroadcast = (mirrored: boolean) => {
+    setMcMirrored(mirrored);
+    sendOrQueueSignalingMessage({
+      type: "camera-state",
+      isMirrored: mirrored
+    });
+  };
+
 // Helper to create a robust mock media stream for fallback when camera/mic is missing or blocked
 function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream {
   const canvas = document.createElement("canvas");
@@ -664,6 +677,28 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
 
       setLocalStream(stream);
       localStreamRef.current = stream;
+
+      // Auto-detect front-facing camera and default to mirrored
+      if (videoTrack) {
+        const trackSettings = videoTrack.getSettings?.();
+        const labelLower = (videoTrack.label || "").toLowerCase();
+        let isFront = false;
+        if (trackSettings && trackSettings.facingMode === "user") {
+          isFront = true;
+        } else if (
+          labelLower.includes("front") || 
+          labelLower.includes("trước") || 
+          labelLower.includes("selfie") || 
+          labelLower.includes("user")
+        ) {
+          isFront = true;
+        }
+        setMcMirrored(isFront);
+        sendOrQueueSignalingMessage({
+          type: "camera-state",
+          isMirrored: isFront
+        });
+      }
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
@@ -890,6 +925,12 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
         settings: settings
       });
 
+      // Synchronize MC mirror state
+      sendOrQueueSignalingMessage({
+        type: "camera-state",
+        isMirrored: mcMirroredRef.current
+      });
+
       // Setup keepalive ping heartbeat
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -1022,6 +1063,12 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                 console.log(`[Signaling MC] OBS/Renderer ${data.senderId} requested stream. Initiating WebRTC Offer to OBS...`);
                 handleCreateOfferToOBS(data.senderId);
               }
+              // Send current mirror state to the peer who requested
+              sendOrQueueSignalingMessage({
+                type: "camera-state",
+                targetId: data.senderId,
+                isMirrored: mcMirroredRef.current
+              });
             }
             break;
 
@@ -1858,7 +1905,7 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                     name: "MC Ban Tổ Chức",
                     role: "host",
                     stream: localStream,
-                    isMirrored: false
+                    isMirrored: mcMirrored
                   };
                 }
                 
@@ -2137,6 +2184,17 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                       title="Chuyển MC thành PIP tròn"
                     >
                       <span>⭕ {settings.pipPeers?.["host"] ? "PIP ON" : "PIP OFF"}</span>
+                    </button>
+                    <button 
+                      onClick={() => setMcMirrorAndBroadcast(!mcMirrored)}
+                      className={`px-2 py-1 rounded border text-[8px] font-mono font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                        mcMirrored 
+                          ? "bg-purple-500 text-white border-purple-500" 
+                          : "bg-slate-900 border-slate-800 text-slate-300 hover:text-white"
+                      }`}
+                      title="Lật gương camera MC"
+                    >
+                      <span>🔄 {mcMirrored ? "GƯƠNG ON" : "GƯƠNG OFF"}</span>
                     </button>
                     <button 
                       onClick={toggleCamera}

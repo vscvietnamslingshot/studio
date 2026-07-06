@@ -139,6 +139,7 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
   const [athleteName, setAthleteName] = useState(initialName || "Vận Động Viên");
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [hostStream, setHostStream] = useState<MediaStream | null>(null);
+  const [hostMirrored, setHostMirrored] = useState(false);
   const [cameraActive, setCameraActive] = useState(true);
   const cameraActiveRef = useRef(true);
   useEffect(() => {
@@ -645,6 +646,8 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
   // Network Handover Recovery Queue
   const pendingMessagesRef = useRef<any[]>([]);
   const lastMessageTimeRef = useRef<number>(Date.now());
+  const lastBytesReceivedRef = useRef<Record<string, { bytes: number; timestamp: number }>>({});
+  const lastRequestTimeRef = useRef<Record<string, number>>({});
 
   const sendOrQueueSignalingMessage = (msg: any) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -871,6 +874,91 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
           console.warn("[Athlete Sync] Camera stream is unhealthy or ended. Re-acquiring camera...");
           updateCameraStream();
         }
+
+        // 3. Scan and heal stale, failed, or zombie WebRTC peer streams received by Athlete
+        const peersToCheck = ["host"];
+        if (roomViewModeRef.current === "everyone") {
+          roomPeersRef.current.forEach(p => {
+            if (p.role === "athlete" && p.id !== athleteId) {
+              peersToCheck.push(p.id);
+            }
+          });
+        }
+
+        peersToCheck.forEach(async (peerId) => {
+          const pc = peerConnectionsRef.current[peerId];
+          let isPeerHealthy = pc && (
+            pc.connectionState === "connected" || 
+            pc.iceConnectionState === "connected" || 
+            pc.iceConnectionState === "completed"
+          );
+
+          // Check if connection is a zombie (connected but no bytes received)
+          if (isPeerHealthy && pc) {
+            try {
+              const stats = await pc.getStats();
+              let currentBytes = 0;
+              stats.forEach(report => {
+                if (report.type === "inbound-rtp" && (report.kind === "video" || report.kind === "audio")) {
+                  currentBytes += (report.bytesReceived || 0);
+                }
+              });
+
+              const receivers = pc.getReceivers();
+              const hasActiveTracks = receivers.some(r => r.track && r.track.enabled && !r.track.muted && r.track.readyState === "live");
+
+              const lastData = lastBytesReceivedRef.current[peerId];
+              const checkTime = Date.now();
+              if (lastData) {
+                const byteDelta = currentBytes - lastData.bytes;
+                const timeDelta = checkTime - lastData.timestamp;
+
+                if (byteDelta === 0) {
+                  // Scenario A: Stream was previously sending bytes but now stopped (frozen/stuck) for more than 40s (with active tracks)
+                  if (lastData.bytes > 0 && timeDelta > 40000 && hasActiveTracks) {
+                    console.warn(`[Athlete Health Check] WebRTC Peer ${peerId} is a ZOMBIE connection (previously active, but frozen for 40s). Forcing recovery.`);
+                    isPeerHealthy = false;
+                  }
+                  // Scenario B: Stream connected but never sent any bytes for more than 45s
+                  else if (lastData.bytes === 0 && timeDelta > 45000) {
+                    console.warn(`[Athlete Health Check] WebRTC Peer ${peerId} is a STUCK connection (connected but 0 bytes received for 45s). Forcing recovery.`);
+                    isPeerHealthy = false;
+                  }
+                } else {
+                  // Bytes changed, update timestamp and bytes
+                  lastBytesReceivedRef.current[peerId] = { bytes: currentBytes, timestamp: checkTime };
+                }
+              } else {
+                // Initialize
+                lastBytesReceivedRef.current[peerId] = { bytes: currentBytes, timestamp: checkTime };
+              }
+            } catch (e) {
+              console.error("[Athlete Health Check] getStats error:", e);
+            }
+          }
+
+          if (!isPeerHealthy) {
+            const checkTime = Date.now();
+            const lastRequest = lastRequestTimeRef.current[peerId] || 0;
+            if (checkTime - lastRequest > 10000) {
+              console.log(`[Athlete Health Check] Stream with peer ${peerId} is UNHEALTHY (${pc ? pc.connectionState : "NO_PC"}). Re-requesting stream...`);
+              lastRequestTimeRef.current[peerId] = checkTime;
+              
+              if (peerId === "host") {
+                sendOrQueueSignalingMessage({
+                  type: "request-stream",
+                  targetId: "host"
+                });
+              } else {
+                cleanupSignalingStateForPeer(peerId);
+                sendOrQueueSignalingMessage({
+                  type: "request-stream",
+                  targetId: peerId
+                });
+              }
+            }
+          }
+        });
       }
     };
 
@@ -1720,6 +1808,26 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
                 pendingIceCandidatesRef.current[data.senderId].push(data.candidate);
                 console.log(`[Athlete] Queued early ICE candidate for peer ${data.senderId}`);
               }
+            }
+            break;
+
+          case "camera-state":
+            if (data.senderId === "host" || data.senderRole === "host") {
+              setHostMirrored(!!data.isMirrored);
+            } else {
+              setAthleteStreams(prev => {
+                const existing = prev[data.senderId];
+                if (existing) {
+                  return {
+                    ...prev,
+                    [data.senderId]: {
+                      ...existing,
+                      isMirrored: !!data.isMirrored
+                    }
+                  };
+                }
+                return prev;
+              });
             }
             break;
 
@@ -2760,6 +2868,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
                   playsInline
                   muted={!earphoneEnabled}
                   className="w-full h-full object-cover"
+                  style={{ transform: athleteStreams[selectedAthleteId]?.isMirrored ? "scaleX(-1)" : "scaleX(1)" }}
                   ref={el => {
                     if (el && selectedAthleteId && athleteStreams[selectedAthleteId]) {
                       const stream = athleteStreams[selectedAthleteId].stream;
@@ -2793,6 +2902,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
                     playsInline
                     muted={!earphoneEnabled}
                     className="w-full h-full object-cover"
+                    style={{ transform: hostMirrored ? "scaleX(-1)" : "scaleX(1)" }}
                     ref={el => {
                       if (el && el.srcObject !== hostStream) {
                         el.srcObject = hostStream;
@@ -2922,6 +3032,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
                 playsInline
                 muted={!earphoneEnabled}
                 className="w-full h-full object-cover"
+                style={{ transform: hostMirrored ? "scaleX(-1)" : "scaleX(1)" }}
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-500">
@@ -2953,6 +3064,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
                   playsInline
                   muted={!earphoneEnabled}
                   className="w-full h-full object-cover"
+                  style={{ transform: val.isMirrored ? "scaleX(-1)" : "scaleX(1)" }}
                   ref={el => {
                     if (el && el.srcObject !== stream) {
                       el.srcObject = stream;
@@ -2991,6 +3103,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
                   playsInline
                   muted={!earphoneEnabled}
                   className="w-full h-full object-cover pointer-events-none"
+                  style={{ transform: hostMirrored ? "scaleX(-1)" : "scaleX(1)" }}
                   ref={el => {
                     if (el && el.srcObject !== hostStream) {
                       el.srcObject = hostStream;
@@ -3011,6 +3124,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
                   playsInline
                   muted={!earphoneEnabled}
                   className="w-full h-full object-cover pointer-events-none"
+                  style={{ transform: athleteStreams[selectedAthleteId]?.isMirrored ? "scaleX(-1)" : "scaleX(1)" }}
                   ref={el => {
                     if (el && selectedAthleteId && athleteStreams[selectedAthleteId]) {
                       const stream = athleteStreams[selectedAthleteId].stream;
