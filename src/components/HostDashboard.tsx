@@ -135,7 +135,8 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
   const [micActive, setMicActive] = useState(true);
   
   // MC camera quality configurations
-  const [hostResolution, setHostResolution] = useState<"1080p" | "720p" | "480p" | "360p">("480p");
+  const [hostResolution, setHostResolution] = useState<"1080p" | "720p" | "480p" | "360p">("720p");
+  const [mcCustomSettingsApplied, setMcCustomSettingsApplied] = useState<boolean>(false);
   const [hostSelectedVideo, setHostSelectedVideo] = useState<string>("auto");
   const [hostZoom, setHostZoom] = useState<number>(1.0);
   const [hostDevices, setHostDevices] = useState<MediaDeviceInfo[]>([]);
@@ -349,19 +350,35 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
     });
   };
 
-  // Outgoing Host/MC maximum bitrate setting (default 400 kbps)
-  const [hostBitrate, setHostBitrateState] = useState<number>(400);
-  const hostBitrateRef = useRef<number>(400);
+  // Outgoing Host/MC maximum bitrate setting (default 1000 kbps)
+  const [hostBitrate, setHostBitrateState] = useState<number>(1000);
+  const hostBitrateRef = useRef<number>(1000);
 
   // Athlete speed assignments (bitrate limits) (key: athleteId, value: kbps)
   const [athleteBitrates, setAthleteBitrates] = useState<Record<string, number>>({});
 
   const applySinglePcBitrate = async (pc: RTCPeerConnection, bitrateKbps: number) => {
-    // If bandwidth priority is configured for vsc-overlay or solo-link, reduce MC's quality to a lower bitrate to preserve bandwidth for athletes
     let targetBitrateKbps = bitrateKbps;
-    if (settings.bandwidthPriority === "vsc-overlay" || settings.bandwidthPriority === "solo-link") {
-      targetBitrateKbps = Math.min(bitrateKbps, 400);
+    let forceScaleDown = 1.0;
+
+    // Detect if this peer connection corresponds to the OBS main/standard preview stream
+    const peerId = Object.keys(peerConnectionsRef.current).find(k => peerConnectionsRef.current[k] === pc);
+    const isMainObs = peerId === "obs" || (peerId && peerId.startsWith("obs") && !peerId.startsWith("obs_solo_"));
+
+    if (isMainObs) {
+      if (!mcCustomSettingsApplied) {
+        // Drop preview quality of MC similar to athletes in the main OBS broadcast stream to conserve bandwidth
+        targetBitrateKbps = 250;
+        forceScaleDown = 2.0;
+        console.log(`[Host] MC Custom settings not applied yet. Dynamic preview reduction active: ${targetBitrateKbps} kbps.`);
+      }
+    } else {
+      // For connections directly to athletes or custom destinations, restrict standard limits if prioritized
+      if (settings.bandwidthPriority === "vsc-overlay" || settings.bandwidthPriority === "solo-link") {
+        targetBitrateKbps = Math.min(bitrateKbps, 400);
+      }
     }
+
     const bitrateBps = targetBitrateKbps * 1000;
     const senders = pc.getSenders();
     const videoSender = senders.find(s => s.track && s.track.kind === "video");
@@ -372,8 +389,9 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
           params.encodings = [{}];
         }
         params.encodings[0].maxBitrate = bitrateBps;
+        params.encodings[0].scaleResolutionDownBy = forceScaleDown;
         await videoSender.setParameters(params);
-        console.log(`[Host] Applied dynamic maxBitrate of ${targetBitrateKbps} kbps on peer connection (priority: ${settings.bandwidthPriority}).`);
+        console.log(`[Host] Applied dynamic maxBitrate of ${targetBitrateKbps} kbps and scale ${forceScaleDown} on peer connection ${peerId} (priority: ${settings.bandwidthPriority}).`);
       } catch (e) {
         console.warn("[Host] Failed to apply maxBitrate on peer connection:", e);
       }
@@ -385,9 +403,10 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
     (Object.values(peerConnectionsRef.current) as RTCPeerConnection[]).forEach(pc => {
       applySinglePcBitrate(pc, hostBitrateRef.current);
     });
-  }, [settings.bandwidthPriority]);
+  }, [settings.bandwidthPriority, mcCustomSettingsApplied]);
 
   const setHostBitrate = (val: number) => {
+    setMcCustomSettingsApplied(true);
     setHostBitrateState(val);
     hostBitrateRef.current = val;
     // Apply to all existing connections
@@ -2213,6 +2232,7 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                               key={res}
                               type="button"
                               onClick={() => {
+                                setMcCustomSettingsApplied(true);
                                 setHostResolution(res);
                                 updateMCStream(hostSelectedVideo, res, hostZoom);
                               }}
