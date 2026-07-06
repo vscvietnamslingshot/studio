@@ -486,17 +486,29 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
     const interval = setInterval(async () => {
       if (!hasEnteredRoom) return;
 
-      // Find an active peer connection that has connected successfully
-      let activePc: any = null;
-      for (const pcVal of Object.values(peerConnectionsRef.current)) {
+      let totalBytesSent = 0;
+      let hasAnyConnectedPc = false;
+
+      // Sum outbound video bytes across all active and connected peer connections
+      const activePcs = Object.values(peerConnectionsRef.current);
+      for (const pcVal of activePcs) {
         const pc = pcVal as any;
         if (pc && (pc.connectionState === "connected" || pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed")) {
-          activePc = pc;
-          break;
+          hasAnyConnectedPc = true;
+          try {
+            const stats = await pc.getStats();
+            stats.forEach(report => {
+              if (report.type === "outbound-rtp" && report.kind === "video") {
+                totalBytesSent += report.bytesSent || 0;
+              }
+            });
+          } catch (statsErr) {
+            console.warn("[Stats] Error fetching stats for pc:", statsErr);
+          }
         }
       }
 
-      if (!activePc) {
+      if (!hasAnyConnectedPc) {
         // Fallback to slight fluctuation around target if not fully established
         setRealtimeBitrate(prev => {
           const target = currentBitrateRef.current || 1000;
@@ -506,37 +518,25 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
         return;
       }
 
-      try {
-        const stats = await activePc.getStats();
-        let bytesSent = 0;
-        stats.forEach(report => {
-          if (report.type === "outbound-rtp" && report.kind === "video") {
-            bytesSent += report.bytesSent || 0;
-          }
-        });
-
-        const now = Date.now();
-        if (lastBytesSent > 0 && bytesSent > lastBytesSent) {
-          const deltaBytes = bytesSent - lastBytesSent;
-          const deltaTimeS = (now - lastTime) / 1000;
-          if (deltaTimeS > 0) {
-            const kbps = Math.round((deltaBytes * 8) / 1000 / deltaTimeS);
-            setRealtimeBitrate(kbps);
-          }
-        } else {
-          // Micro fluctuations to look organic and real-time
-          setRealtimeBitrate(prev => {
-            const target = currentBitrateRef.current || 1000;
-            const noise = Math.floor(Math.random() * 60) - 30;
-            return Math.max(100, Math.min(6000, (prev === 1000 ? target : prev) + noise));
-          });
+      const now = Date.now();
+      if (lastBytesSent > 0 && totalBytesSent > lastBytesSent) {
+        const deltaBytes = totalBytesSent - lastBytesSent;
+        const deltaTimeS = (now - lastTime) / 1000;
+        if (deltaTimeS > 0) {
+          const kbps = Math.round((deltaBytes * 8) / 1000 / deltaTimeS);
+          setRealtimeBitrate(kbps);
         }
-
-        lastBytesSent = bytesSent;
-        lastTime = now;
-      } catch (err) {
-        console.warn("[Bitrate Stats] Error reading WebRTC outbound stats:", err);
+      } else {
+        // Micro fluctuations to look organic and real-time
+        setRealtimeBitrate(prev => {
+          const target = currentBitrateRef.current || 1000;
+          const noise = Math.floor(Math.random() * 60) - 30;
+          return Math.max(100, Math.min(6000, (prev === 1000 ? target : prev) + noise));
+        });
       }
+
+      lastBytesSent = totalBytesSent;
+      lastTime = now;
     }, 1000);
 
     return () => clearInterval(interval);
@@ -2896,142 +2896,142 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
         )}
 
         {/* Float Return feed (MC) or Round PIP depending on split screen target */}
-        {splitScreenTarget === null ? (
-          <div className="absolute top-18 right-4 flex flex-col gap-2 z-10 max-h-[75vh] overflow-y-auto no-scrollbar">
-            {/* Host PIP Card */}
-            <div 
-              onClick={(e) => {
-                e.stopPropagation();
-                // If clicked, enter split screen with Host
-                setSplitScreenTarget("host");
-              }}
-              className="w-[120px] sm:w-[150px] aspect-video bg-black rounded-lg overflow-hidden border-2 border-purple-500 shadow-lg relative shrink-0 cursor-pointer hover:border-white transition-all hover:scale-105"
-            >
-              <div className="absolute top-1 left-1 bg-black/60 px-1 py-0.2 text-[8px] font-mono text-purple-400 rounded z-10">
-                MC BAN TỔ CHỨC
+        <div className={`absolute top-18 right-4 flex flex-col gap-2 z-10 max-h-[75vh] overflow-y-auto no-scrollbar transition-all duration-200 ${splitScreenTarget !== null ? "pointer-events-none opacity-0 invisible" : "opacity-100 animate-fade-in"}`}>
+          {/* Host PIP Card */}
+          <div 
+            onClick={(e) => {
+              e.stopPropagation();
+              // If clicked, enter split screen with Host
+              setSplitScreenTarget("host");
+            }}
+            className="w-[120px] sm:w-[150px] aspect-video bg-black rounded-lg overflow-hidden border-2 border-purple-500 shadow-lg relative shrink-0 cursor-pointer hover:border-white transition-all hover:scale-105"
+          >
+            <div className="absolute top-1 left-1 bg-black/60 px-1 py-0.2 text-[8px] font-mono text-purple-400 rounded z-10">
+              MC BAN TỔ CHỨC
+            </div>
+            {hostStream ? (
+              <video
+                ref={el => {
+                  hostVideoRef.current = el;
+                  if (el && el.srcObject !== hostStream) {
+                    el.srcObject = hostStream;
+                    el.play().catch(() => {});
+                  }
+                }}
+                autoPlay
+                playsInline
+                muted={!earphoneEnabled}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin mb-1 text-purple-400" />
+                <span className="text-[8px] font-mono">Đợi MC...</span>
               </div>
-              {hostStream ? (
+            )}
+          </div>
+
+          {/* Other Athletes PIP Cards (Rendered if roomViewMode is 'everyone') */}
+          {roomViewMode === "everyone" && Object.entries(athleteStreams).map(([peerId, val]: [string, any]) => {
+            const { stream, name } = val;
+            return (
+              <div 
+                key={peerId} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // If clicked, pull this athlete into split screen (athlete 2)
+                  setSelectedAthleteId(peerId);
+                  setSplitScreenTarget("athlete");
+                }}
+                className="w-[120px] sm:w-[150px] aspect-video bg-black rounded-lg overflow-hidden border-2 border-cyan-500/80 shadow-lg relative shrink-0 animate-fade-in cursor-pointer hover:border-white transition-all hover:scale-105"
+              >
+                <div className="absolute top-1 left-1 bg-black/60 px-1 py-0.2 text-[8px] font-mono text-cyan-400 rounded z-10">
+                  {name} (VĐV)
+                </div>
                 <video
+                  autoPlay
+                  playsInline
+                  muted={!earphoneEnabled}
+                  className="w-full h-full object-cover"
                   ref={el => {
-                    hostVideoRef.current = el;
+                    if (el && el.srcObject !== stream) {
+                      el.srcObject = stream;
+                      el.play().catch(() => {});
+                    }
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Round PIP for Split Screen Layout (centered vertically on the right) */}
+        <div 
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          style={{
+            transform: `translate(${pipPosition.x}px, ${pipPosition.y}px)`,
+            touchAction: "none"
+          }}
+          className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1.5 cursor-move select-none transition-all duration-200 ${
+            (splitScreenTarget === "athlete" || (splitScreenTarget === "host" && selectedAthleteId !== null)) 
+              ? "opacity-100 scale-100 pointer-events-auto" 
+              : "pointer-events-none opacity-0 scale-95 invisible h-0 overflow-hidden"
+          }`}
+        >
+          <div 
+            className="h-[80px] w-[80px] sm:h-[100px] sm:w-[100px] rounded-full overflow-hidden border-2 border-white bg-black shadow-2xl relative hover:scale-105 active:scale-95 transition-all pointer-events-none"
+          >
+            {splitScreenTarget === "athlete" ? (
+              // MC is in Round PIP
+              hostStream ? (
+                <video
+                  autoPlay
+                  playsInline
+                  muted={!earphoneEnabled}
+                  className="w-full h-full object-cover pointer-events-none"
+                  ref={el => {
                     if (el && el.srcObject !== hostStream) {
                       el.srcObject = hostStream;
                       el.play().catch(() => {});
                     }
                   }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-slate-900 text-[8px] font-mono text-slate-500 pointer-events-none">
+                  Đợi MC...
+                </div>
+              )
+            ) : (
+              // Selected Athlete is in Round PIP
+              selectedAthleteId && athleteStreams[selectedAthleteId] ? (
+                <video
                   autoPlay
                   playsInline
                   muted={!earphoneEnabled}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin mb-1 text-purple-400" />
-                  <span className="text-[8px] font-mono">Đợi MC...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Other Athletes PIP Cards (Rendered if roomViewMode is 'everyone') */}
-            {roomViewMode === "everyone" && Object.entries(athleteStreams).map(([peerId, val]: [string, any]) => {
-              const { stream, name } = val;
-              return (
-                <div 
-                  key={peerId} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // If clicked, pull this athlete into split screen (athlete 2)
-                    setSelectedAthleteId(peerId);
-                    setSplitScreenTarget("athlete");
-                  }}
-                  className="w-[120px] sm:w-[150px] aspect-video bg-black rounded-lg overflow-hidden border-2 border-cyan-500/80 shadow-lg relative shrink-0 animate-fade-in cursor-pointer hover:border-white transition-all hover:scale-105"
-                >
-                  <div className="absolute top-1 left-1 bg-black/60 px-1 py-0.2 text-[8px] font-mono text-cyan-400 rounded z-10">
-                    {name} (VĐV)
-                  </div>
-                  <video
-                    autoPlay
-                    playsInline
-                    muted={!earphoneEnabled}
-                    className="w-full h-full object-cover"
-                    ref={el => {
-                      if (el && el.srcObject !== stream) {
+                  className="w-full h-full object-cover pointer-events-none"
+                  ref={el => {
+                    if (el && selectedAthleteId && athleteStreams[selectedAthleteId]) {
+                      const stream = athleteStreams[selectedAthleteId].stream;
+                      if (el.srcObject !== stream) {
                         el.srcObject = stream;
                         el.play().catch(() => {});
                       }
-                    }}
-                  />
+                    }
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-slate-900 text-[8px] font-mono text-slate-500 pointer-events-none">
+                  Đợi VĐV...
                 </div>
-              );
-            })}
+              )
+            )}
           </div>
-        ) : (
-          /* Round PIP for Split Screen Layout (centered vertically on the right) */
-          (splitScreenTarget === "athlete" || (splitScreenTarget === "host" && selectedAthleteId !== null)) && (
-            <div 
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              style={{
-                transform: `translate(${pipPosition.x}px, ${pipPosition.y}px)`,
-                touchAction: "none"
-              }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1.5 animate-fade-in cursor-move select-none"
-            >
-              <div 
-                className="h-[80px] w-[80px] sm:h-[100px] sm:w-[100px] rounded-full overflow-hidden border-2 border-white bg-black shadow-2xl relative hover:scale-105 active:scale-95 transition-all pointer-events-none"
-              >
-                {splitScreenTarget === "athlete" ? (
-                  // MC is in Round PIP
-                  hostStream ? (
-                    <video
-                      autoPlay
-                      playsInline
-                      muted={!earphoneEnabled}
-                      className="w-full h-full object-cover pointer-events-none"
-                      ref={el => {
-                        if (el && el.srcObject !== hostStream) {
-                          el.srcObject = hostStream;
-                          el.play().catch(() => {});
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-900 text-[8px] font-mono text-slate-500 pointer-events-none">
-                      Đợi MC...
-                    </div>
-                  )
-                ) : (
-                  // Selected Athlete is in Round PIP
-                  selectedAthleteId && athleteStreams[selectedAthleteId] ? (
-                    <video
-                      autoPlay
-                      playsInline
-                      muted={!earphoneEnabled}
-                      className="w-full h-full object-cover pointer-events-none"
-                      ref={el => {
-                        if (el && selectedAthleteId && athleteStreams[selectedAthleteId]) {
-                          const stream = athleteStreams[selectedAthleteId].stream;
-                          if (el.srcObject !== stream) {
-                            el.srcObject = stream;
-                            el.play().catch(() => {});
-                          }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-900 text-[8px] font-mono text-slate-500 pointer-events-none">
-                      Đợi VĐV...
-                    </div>
-                  )
-                )}
-              </div>
-              <div className="bg-black/80 px-2 py-0.5 rounded text-[8px] font-black font-mono text-white shadow select-none uppercase tracking-wider text-center max-w-[120px] truncate pointer-events-none">
-                {splitScreenTarget === "athlete" ? "CHẠM ĐỔI MC" : `CHẠM ĐỔI VĐV`}
-              </div>
-            </div>
-          )
-        )}
+          <div className="bg-black/80 px-2 py-0.5 rounded text-[8px] font-black font-mono text-white shadow select-none uppercase tracking-wider text-center max-w-[120px] truncate pointer-events-none">
+            {splitScreenTarget === "athlete" ? "CHẠM ĐỔI MC" : `CHẠM ĐỔI VĐV`}
+          </div>
+        </div>
 
         {/* Floating Quick Settings Menu (if open) */}
         {showSettings && (

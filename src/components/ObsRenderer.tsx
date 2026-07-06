@@ -961,6 +961,268 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
     }
   };
 
+  // Touch Event equivalents for scoreboard, pip, custom elements
+  const handleScoreboardTouchStart = (e: React.TouchEvent) => {
+    if (!isPreview || !onUpdateSettings) return;
+
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || target.closest(".no-drag") || target.closest("select")) {
+      return;
+    }
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    
+    const isVertical = settings.aspectRatio === "9:16";
+    const currentPos = settings.scoreboardPosition || (
+      isVertical ? { x: 2, y: 15, w: 96, h: 25 } : { x: 4, y: 12, w: 24, h: 32 }
+    );
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+
+      const container = document.getElementById("obs-main-wrapper");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+
+      const newX = Math.max(0, Math.min(100 - currentPos.w, currentPos.x + pctDeltaX));
+      const newY = Math.max(0, Math.min(100 - currentPos.h, currentPos.y + pctDeltaY));
+
+      const updated = {
+        ...settings,
+        scoreboardPosition: {
+          x: Math.round(newX * 10) / 10,
+          y: Math.round(newY * 10) / 10,
+          w: currentPos.w,
+          h: currentPos.h
+        }
+      };
+      setSettings(updated);
+      onUpdateSettings(updated);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handlePipTouchStart = (e: React.TouchEvent) => {
+    if (!isPreview || !onUpdateSettings) return;
+
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || target.closest(".no-drag") || target.closest("select")) {
+      return;
+    }
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+
+    const container = document.getElementById("obs-main-wrapper");
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+
+    const currentPos = settings.pipLayoutPosition || { x: 80, y: 70 };
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+
+      const newX = Math.max(0, Math.min(100, currentPos.x + pctDeltaX));
+      const newY = Math.max(0, Math.min(100, currentPos.y + pctDeltaY));
+
+      const updated = {
+        ...settings,
+        pipLayoutPosition: {
+          x: Math.round(newX * 10) / 10,
+          y: Math.round(newY * 10) / 10
+        }
+      };
+      setSettings(updated, false);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      setSettings({ ...settingsRef.current }, true);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleScoreboardResizeTouchStart = (e: React.TouchEvent) => {
+    if (!isPreview || !onUpdateSettings) return;
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+
+    const isVertical = settings.aspectRatio === "9:16";
+    const currentPos = settings.scoreboardPosition || (
+      isVertical ? { x: 2, y: 15, w: 96, h: 25 } : { x: 4, y: 12, w: 24, h: 32 }
+    );
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+
+      const container = document.getElementById("obs-main-wrapper");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+
+      const newW = Math.max(10, Math.min(100 - currentPos.x, currentPos.w + pctDeltaX));
+      const newH = Math.max(10, Math.min(100 - currentPos.y, currentPos.h + pctDeltaY));
+
+      const updated = {
+        ...settings,
+        scoreboardPosition: {
+          x: currentPos.x,
+          y: currentPos.y,
+          w: Math.round(newW * 10) / 10,
+          h: Math.round(newH * 10) / 10
+        }
+      };
+      setSettings(updated);
+      onUpdateSettings(updated);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleElementDragTouchStart = (e: React.TouchEvent, key: "logo" | "banner" | "ticker" | "lowerThird", defaultPos: { x: number; y: number; w: number; h: number }) => {
+    if (!isPreview || !onUpdateSettings) return;
+
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || target.closest(".no-drag") || target.closest("select")) {
+      return;
+    }
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    
+    let currentPos = defaultPos;
+    if (key === "logo" && settingsRef.current.logoPositionCustom) currentPos = settingsRef.current.logoPositionCustom;
+    else if (key === "banner" && settingsRef.current.bannerPosition) currentPos = settingsRef.current.bannerPosition;
+    else if (key === "ticker" && settingsRef.current.tickerPosition) currentPos = settingsRef.current.tickerPosition;
+    else if (key === "lowerThird" && settingsRef.current.lowerThirdPosition) currentPos = settingsRef.current.lowerThirdPosition;
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+
+      const container = document.getElementById("obs-main-wrapper");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+
+      const newX = Math.max(0, Math.min(100 - currentPos.w, currentPos.x + pctDeltaX));
+      const newY = Math.max(0, Math.min(100 - currentPos.h, currentPos.y + pctDeltaY));
+
+      const updatedPos = {
+        x: Math.round(newX * 10) / 10,
+        y: Math.round(newY * 10) / 10,
+        w: currentPos.w,
+        h: currentPos.h
+      };
+
+      const updated = {
+        ...settingsRef.current,
+        [key === "logo" ? "logoPositionCustom" : key === "banner" ? "bannerPosition" : key === "ticker" ? "tickerPosition" : "lowerThirdPosition"]: updatedPos
+      };
+      setSettings(updated, false);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      // Commit final position to OBS
+      setSettings({ ...settingsRef.current }, true);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleElementResizeTouchStart = (e: React.TouchEvent, key: "logo" | "banner" | "ticker" | "lowerThird", defaultPos: { x: number; y: number; w: number; h: number }) => {
+    if (!isPreview || !onUpdateSettings) return;
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+
+    let currentPos = defaultPos;
+    if (key === "logo" && settingsRef.current.logoPositionCustom) currentPos = settingsRef.current.logoPositionCustom;
+    else if (key === "banner" && settingsRef.current.bannerPosition) currentPos = settingsRef.current.bannerPosition;
+    else if (key === "ticker" && settingsRef.current.tickerPosition) currentPos = settingsRef.current.tickerPosition;
+    else if (key === "lowerThird" && settingsRef.current.lowerThirdPosition) currentPos = settingsRef.current.lowerThirdPosition;
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+
+      const container = document.getElementById("obs-main-wrapper");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+
+      const newW = Math.max(5, Math.min(100 - currentPos.x, currentPos.w + pctDeltaX));
+      const newH = Math.max(5, Math.min(100 - currentPos.y, currentPos.h + pctDeltaY));
+
+      const updatedPos = {
+        x: currentPos.x,
+        y: currentPos.y,
+        w: Math.round(newW * 10) / 10,
+        h: Math.round(newH * 10) / 10
+      };
+
+      const updated = {
+        ...settingsRef.current,
+        [key === "logo" ? "logoPositionCustom" : key === "banner" ? "bannerPosition" : key === "ticker" ? "tickerPosition" : "lowerThirdPosition"]: updatedPos
+      };
+      setSettings(updated, false);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      // Commit final position to OBS
+      setSettings({ ...settingsRef.current }, true);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
   // Scoreboard drag & resize handlers
   const handleScoreboardDragStart = (e: React.MouseEvent) => {
     if (!isPreview || !onUpdateSettings) return;
@@ -1450,6 +1712,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
               padding: "0 1.5rem"
             }}
             onMouseDown={(e) => handleElementDragStart(e, "banner", defaultBannerPos)}
+            onTouchStart={(e) => handleElementDragTouchStart(e, "banner", defaultBannerPos)}
           >
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-amber-300 animate-pulse" />
@@ -1464,6 +1727,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                 <div 
                   className="absolute bottom-0 right-0 w-4 h-4 bg-cyan-500 cursor-se-resize flex items-center justify-center z-50 hover:bg-cyan-400 no-drag"
                   onMouseDown={(e) => handleElementResizeStart(e, "banner", defaultBannerPos)}
+                  onTouchStart={(e) => handleElementResizeTouchStart(e, "banner", defaultBannerPos)}
                 >
                   <Maximize2 className="h-2 w-2 text-slate-950 rotate-90" />
                 </div>
@@ -1536,6 +1800,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
               clipPath: logoClipPathStyle,
             }}
             onMouseDown={(e) => handleElementDragStart(e, "logo", defaultLogoPos)}
+            onTouchStart={(e) => handleElementDragTouchStart(e, "logo", defaultLogoPos)}
           >
             <img
               src={settings.logoUrl}
@@ -1550,6 +1815,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                 <div 
                   className="absolute bottom-0 right-0 w-4 h-4 bg-cyan-500 cursor-se-resize flex items-center justify-center z-50 hover:bg-cyan-400 no-drag"
                   onMouseDown={(e) => handleElementResizeStart(e, "logo", defaultLogoPos)}
+                  onTouchStart={(e) => handleElementResizeTouchStart(e, "logo", defaultLogoPos)}
                 >
                   <Maximize2 className="h-2 w-2 text-slate-950 rotate-90" />
                 </div>
@@ -1626,6 +1892,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
               WebkitBackdropFilter: `blur(${sbBgBlur}px)`,
             }}
             onMouseDown={handleScoreboardDragStart}
+            onTouchStart={handleScoreboardTouchStart}
           >
             <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-3 p-4">
               <Trophy className="h-5 w-5 text-yellow-400 shrink-0" />
@@ -1669,6 +1936,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                 <div 
                   className="absolute bottom-0 right-0 w-5 h-5 bg-cyan-500 rounded-tl cursor-se-resize flex items-center justify-center z-50 hover:bg-cyan-400 no-drag"
                   onMouseDown={handleScoreboardResizeStart}
+                  onTouchStart={handleScoreboardResizeTouchStart}
                 >
                   <Maximize2 className="h-2.5 w-2.5 text-slate-950 rotate-90" />
                 </div>
@@ -1924,6 +2192,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                             transform: "translate(-50%, -50%)"
                           }}
                           onMouseDown={isPreview ? handlePipDragStart : undefined}
+                          onTouchStart={isPreview ? handlePipTouchStart : undefined}
                         >
                           <video
                             autoPlay
@@ -2010,6 +2279,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
               borderLeftColor: getRgbaColor(ltBgColor, ltBgOpacity),
             }}
             onMouseDown={(e) => handleElementDragStart(e, "lowerThird", defaultLtPos)}
+            onTouchStart={(e) => handleElementDragTouchStart(e, "lowerThird", defaultLtPos)}
           >
             <h4 className="text-[10px] text-emerald-400 font-mono uppercase tracking-widest leading-none">THÔNG TIN GIẢI ĐẤU</h4>
             <p className="text-xs sm:text-sm font-bold font-mono tracking-wide mt-1 text-white uppercase truncate">{settings.lowerThirdText}</p>
@@ -2020,6 +2290,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                 <div 
                   className="absolute bottom-0 right-0 w-4 h-4 bg-cyan-500 cursor-se-resize flex items-center justify-center z-50 hover:bg-cyan-400 no-drag"
                   onMouseDown={(e) => handleElementResizeStart(e, "lowerThird", defaultLtPos)}
+                  onTouchStart={(e) => handleElementResizeTouchStart(e, "lowerThird", defaultLtPos)}
                 >
                   <Maximize2 className="h-2 w-2 text-slate-950 rotate-90" />
                 </div>
@@ -2093,6 +2364,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
               borderColor: isPreview ? getRgbaColor("#22d3ee", tickerBgOpacity * 0.5) : undefined,
             }}
             onMouseDown={(e) => handleElementDragStart(e, "ticker", defaultTickerPos)}
+            onTouchStart={(e) => handleElementDragTouchStart(e, "ticker", defaultTickerPos)}
           >
             <div 
               className="bg-red-600 text-[10px] text-white px-3.5 py-1 font-bold z-10 flex items-center gap-1 shrink-0 uppercase shadow-lg h-full border-r ml-4 rounded no-drag"
@@ -2120,6 +2392,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                 <div 
                   className="absolute bottom-0 right-0 w-4 h-4 bg-cyan-500 cursor-se-resize flex items-center justify-center z-50 hover:bg-cyan-400 no-drag"
                   onMouseDown={(e) => handleElementResizeStart(e, "ticker", defaultTickerPos)}
+                  onTouchStart={(e) => handleElementResizeTouchStart(e, "ticker", defaultTickerPos)}
                 >
                   <Maximize2 className="h-2 w-2 text-slate-950 rotate-90" />
                 </div>
@@ -2378,6 +2651,281 @@ function ObsVideoCard({
   };
 
   const badgeBgOpacity = settings.scoreBadgeBgOpacity ?? 90;
+
+  // Touch Event equivalents for ObsVideoCard components
+  const handleBadgeResizeTouchStart = (e: React.TouchEvent) => {
+    if (!isPreview || !onUpdateSettings) return;
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const currentScales = { ...settingsRef.current.scoreBadgeScales || {} };
+    const startScale = currentScales[peerId] || 1.0;
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      // 100 pixels of dragging = 1.0 change in scale
+      const nextScale = Math.max(0.4, Math.min(3.0, Math.round((startScale + deltaX * 0.01) * 100) / 100));
+
+      const updatedScales = { ...settingsRef.current.scoreBadgeScales || {} };
+      updatedScales[peerId] = nextScale;
+
+      onUpdateSettings({
+        ...settingsRef.current,
+        scoreBadgeScales: updatedScales,
+      }, false);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      onUpdateSettings({ ...settingsRef.current }, true);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleBadgeDragTouchStart = (e: React.TouchEvent) => {
+    if (!isPreview || !onUpdateSettings) return;
+    const target = e.target as HTMLElement;
+    if (target.closest(".no-drag") || target.tagName === "BUTTON") {
+      return;
+    }
+    e.stopPropagation();
+
+    const badgeElement = e.currentTarget as HTMLElement;
+    const parentElement = badgeElement.parentElement;
+    if (!parentElement) return;
+
+    const parentRect = parentElement.getBoundingClientRect();
+    const badgeRect = badgeElement.getBoundingClientRect();
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+
+    const initialX = badgePos
+      ? badgePos.x
+      : ((badgeRect.left - parentRect.left) / parentRect.width) * 100;
+    const initialY = badgePos
+      ? badgePos.y
+      : ((badgeRect.top - parentRect.top) / parentRect.height) * 100;
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+
+      const pctDeltaX = (deltaX / parentRect.width) * 100;
+      const pctDeltaY = (deltaY / parentRect.height) * 100;
+
+      const badgeWPercent = (badgeRect.width / parentRect.width) * 100;
+      const badgeHPercent = (badgeRect.height / parentRect.height) * 100;
+
+      const nextX = Math.max(0, Math.min(100 - badgeWPercent, initialX + pctDeltaX));
+      const nextY = Math.max(0, Math.min(100 - badgeHPercent, initialY + pctDeltaY));
+
+      const nextPositions = { ...settingsRef.current.scoreBadgePositions || {} };
+      nextPositions[peerId] = {
+        x: Math.round(nextX * 10) / 10,
+        y: Math.round(nextY * 10) / 10,
+      };
+
+      onUpdateSettings({
+        ...settingsRef.current,
+        scoreBadgePositions: nextPositions,
+      }, false);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+
+      const finalPositions = { ...settingsRef.current.scoreBadgePositions || {} };
+      onUpdateSettings({
+        ...settingsRef.current,
+        scoreBadgePositions: finalPositions,
+      }, true);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleDragTouchStart = (e: React.TouchEvent) => {
+    if (!isPreview || settingsRef.current.layout !== "custom" || !onUpdateSettings || index === undefined || !activePeers) return;
+    
+    // Do not drag if interactive handles are clicked
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || target.closest(".no-drag")) {
+      return;
+    }
+    
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    const initialPos = settingsRef.current.peerPositions?.[peerId] || getInitialPosition(index, activePeers.length);
+    
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+      
+      const container = document.getElementById("obs-participants-container");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+      
+      const nextX = Math.max(0, Math.min(100 - initialPos.w, initialPos.x + pctDeltaX));
+      const nextY = Math.max(0, Math.min(100 - initialPos.h, initialPos.y + pctDeltaY));
+      
+      const nextPositions = { ...settingsRef.current.peerPositions || {} };
+      nextPositions[peerId] = {
+        x: Math.round(nextX * 10) / 10,
+        y: Math.round(nextY * 10) / 10,
+        w: initialPos.w,
+        h: initialPos.h
+      };
+      
+      onUpdateSettings({
+        ...settingsRef.current,
+        peerPositions: nextPositions
+      }, false);
+    };
+    
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      
+      // Commit final position to OBS
+      const finalPositions = { ...settingsRef.current.peerPositions || {} };
+      onUpdateSettings({
+        ...settingsRef.current,
+        peerPositions: finalPositions
+      }, true);
+    };
+    
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleResizeTouchStart = (e: React.TouchEvent) => {
+    if (!isPreview || settingsRef.current.layout !== "custom" || !onUpdateSettings || index === undefined || !activePeers) return;
+    e.stopPropagation();
+    
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    const initialPos = settingsRef.current.peerPositions?.[peerId] || getInitialPosition(index, activePeers.length);
+    
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+      
+      const container = document.getElementById("obs-participants-container");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+      
+      const nextW = Math.max(10, Math.min(100 - initialPos.x, initialPos.w + pctDeltaX));
+      const nextH = Math.max(10, Math.min(100 - initialPos.y, initialPos.h + pctDeltaY));
+      
+      const nextPositions = { ...settingsRef.current.peerPositions || {} };
+      nextPositions[peerId] = {
+        x: initialPos.x,
+        y: initialPos.y,
+        w: Math.round(nextW * 10) / 10,
+        h: Math.round(nextH * 10) / 10
+      };
+      
+      onUpdateSettings({
+        ...settingsRef.current,
+        peerPositions: nextPositions
+      }, false);
+    };
+    
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      
+      // Commit final positions to OBS
+      const finalPositions = { ...settingsRef.current.peerPositions || {} };
+      onUpdateSettings({
+        ...settingsRef.current,
+        peerPositions: finalPositions
+      }, true);
+    };
+    
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleEdgeDragTouchStart = (e: React.TouchEvent, edge: "top" | "bottom" | "left" | "right") => {
+    if (!isPreview || !onUpdateSettings) return;
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    
+    const element = e.currentTarget as HTMLElement;
+    const container = element.closest(".video-card-container");
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    
+    const initialCrop = { ...settingsRef.current.peerCrops?.[peerId] || { top: 0, bottom: 0, left: 0, right: 0 } };
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const deltaX = moveTouch.clientX - startX;
+      const deltaY = moveTouch.clientY - startY;
+      
+      const pctDeltaX = (deltaX / rect.width) * 100;
+      const pctDeltaY = (deltaY / rect.height) * 100;
+      
+      const nextCrops = { ...settingsRef.current.peerCrops || {} };
+      
+      let newVal = 0;
+      if (edge === "top") {
+        newVal = Math.max(0, Math.min(80, Math.round((initialCrop.top + pctDeltaY) * 10) / 10));
+      } else if (edge === "bottom") {
+        newVal = Math.max(0, Math.min(80, Math.round((initialCrop.bottom - pctDeltaY) * 10) / 10));
+      } else if (edge === "left") {
+        newVal = Math.max(0, Math.min(80, Math.round((initialCrop.left + pctDeltaX) * 10) / 10));
+      } else if (edge === "right") {
+        newVal = Math.max(0, Math.min(80, Math.round((initialCrop.right - pctDeltaX) * 10) / 10));
+      }
+      
+      nextCrops[peerId] = {
+        ...initialCrop,
+        [edge]: newVal
+      };
+      
+      onUpdateSettings({
+        ...settingsRef.current,
+        peerCrops: nextCrops
+      }, false);
+    };
+
+    const handleTouchEnd = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      
+      const finalCrops = { ...settingsRef.current.peerCrops || {} };
+      onUpdateSettings({
+        ...settingsRef.current,
+        peerCrops: finalCrops
+      }, true);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+  };
 
   const handleBadgeResizeStart = (e: React.MouseEvent) => {
     if (!isPreview || !onUpdateSettings) return;
@@ -2708,6 +3256,7 @@ function ObsVideoCard({
   return (
     <div 
       onMouseDown={handleDragStart}
+      onTouchStart={handleDragTouchStart}
       style={{ 
         clipPath: clipPathStyle, 
         cursor: isPreview && settings.layout === "custom" ? "move" : "default" 
@@ -2786,6 +3335,7 @@ function ObsVideoCard({
       {!isHost ? (
         <div 
           onMouseDown={handleBadgeDragStart}
+          onTouchStart={handleBadgeDragTouchStart}
           style={{
             ...badgeStyle,
             backgroundColor: `rgba(2, 6, 23, ${badgeBgOpacity / 100})`,
@@ -2825,6 +3375,7 @@ function ObsVideoCard({
           {isPreview && (
             <div 
               onMouseDown={handleBadgeResizeStart}
+              onTouchStart={handleBadgeResizeTouchStart}
               className="absolute bottom-0 right-0 w-3 h-3 bg-cyan-500 rounded-tl cursor-se-resize flex items-center justify-center z-20 hover:bg-cyan-400 no-drag"
               title="Kéo ở đây để chỉnh kích thước bảng điểm"
             >
@@ -2884,6 +3435,7 @@ function ObsVideoCard({
           {/* Bottom-right Corner Resize Handle */}
           <div 
             onMouseDown={handleResizeStart}
+            onTouchStart={handleResizeTouchStart}
             title="Kéo để thay đổi kích thước"
             style={{
               bottom: `calc(${crop.bottom}% + 4px)`,
@@ -2953,6 +3505,7 @@ function ObsVideoCard({
               top: `calc(${crop.top}% - 8px)`,
             }}
             onMouseDown={(e) => handleEdgeDragStart(e, "top")}
+            onTouchStart={(e) => handleEdgeDragTouchStart(e, "top")}
             className="absolute h-5 cursor-ns-resize z-30 no-drag flex items-center justify-center group"
             title="Kéo cạnh Trên để cắt"
           >
@@ -2966,6 +3519,7 @@ function ObsVideoCard({
               top: `calc(100% - ${crop.bottom}% - 12px)`,
             }}
             onMouseDown={(e) => handleEdgeDragStart(e, "bottom")}
+            onTouchStart={(e) => handleEdgeDragTouchStart(e, "bottom")}
             className="absolute h-5 cursor-ns-resize z-30 no-drag flex items-center justify-center group"
             title="Kéo cạnh Dưới để cắt"
           >
@@ -2979,6 +3533,7 @@ function ObsVideoCard({
               height: "80%",
             }}
             onMouseDown={(e) => handleEdgeDragStart(e, "left")}
+            onTouchStart={(e) => handleEdgeDragTouchStart(e, "left")}
             className="absolute w-5 cursor-ew-resize z-30 no-drag flex items-center justify-center group"
             title="Kéo cạnh Trái để cắt"
           >
@@ -2992,6 +3547,7 @@ function ObsVideoCard({
               height: "80%",
             }}
             onMouseDown={(e) => handleEdgeDragStart(e, "right")}
+            onTouchStart={(e) => handleEdgeDragTouchStart(e, "right")}
             className="absolute w-5 cursor-ew-resize z-30 no-drag flex items-center justify-center group"
             title="Kéo cạnh Phải để cắt"
           >
