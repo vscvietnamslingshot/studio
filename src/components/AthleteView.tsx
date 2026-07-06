@@ -330,34 +330,6 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
         const isHost = targetId === "host";
         const isAthlete = !isHost && !isMainObs && !isSoloLink;
 
-        // Clean sub-second reconnection when split-screen state shifts to prevent black screens/frozen frames
-        if (isAthlete) {
-          const wasSplitActive = (pc as any).wasSplitActive ?? false;
-          const isSplitActive = (targetId === selectedAthleteId && splitScreenTarget === "athlete");
-          if (wasSplitActive !== isSplitActive) {
-            (pc as any).wasSplitActive = isSplitActive;
-            console.log(`[WebRTC Reconnect] Split-screen transition detected for Athlete ${targetId}. Recreating connection to ensure fluid video.`);
-            cleanupSignalingStateForPeer(targetId);
-            handleCreateOffer(targetId);
-            continue;
-          }
-        }
-
-        if (isHost) {
-          const wasSplitActive = (pc as any).wasSplitActive ?? false;
-          const isSplitActive = (splitScreenTarget !== null);
-          if (wasSplitActive !== isSplitActive) {
-            (pc as any).wasSplitActive = isSplitActive;
-            console.log(`[WebRTC Reconnect] Split-screen transition detected for Host. Recreating connection to ensure fluid video.`);
-            cleanupSignalingStateForPeer("host");
-            sendOrQueueSignalingMessage({
-              type: "request-stream",
-              targetId: "host"
-            });
-            continue;
-          }
-        }
-
         if (isAthlete) {
           // Athlete-to-athlete connection: Uniformly distribute 720p quality
           console.log(`[Dynamic Bitrate] Athlete ${targetId} connection. Distributing uniform 720p at 1000 kbps.`);
@@ -2940,7 +2912,13 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
               </div>
               {hostStream ? (
                 <video
-                  ref={hostVideoRef}
+                  ref={el => {
+                    hostVideoRef.current = el;
+                    if (el && el.srcObject !== hostStream) {
+                      el.srcObject = hostStream;
+                      el.play().catch(() => {});
+                    }
+                  }}
                   autoPlay
                   playsInline
                   muted={!earphoneEnabled}
