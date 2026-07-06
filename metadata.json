@@ -1,0 +1,11 @@
+{
+  "name": "VSC Live Broadcast Studio",
+  "description": "An OBS-style browser broadcast studio that allows a host (MC) and an athlete to livestream together on YouTube using WebRTC, canvas overlay compositions (logo, banner texts), and dynamic resolution/framerate settings.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
