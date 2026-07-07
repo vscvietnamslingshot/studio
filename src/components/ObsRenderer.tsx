@@ -831,7 +831,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
       console.log(`[OBS Renderer] Receiving WebRTC Offer from ${peerId}. Cleaning up prior state to avoid collisions...`);
       cleanupSignalingStateForPeer(peerId);
 
-      const pc = new RTCPeerConnection(getWebRtcConfig(!!settings?.use4GMode));
+      const pc = new RTCPeerConnection(getWebRtcConfig(false));
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[peerId] = pc;
 

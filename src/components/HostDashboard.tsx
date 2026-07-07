@@ -1285,8 +1285,7 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
       }
 
       console.log(`[Signaling MC] Creating NEW RTCPeerConnection for Athlete ${athleteId}...`);
-      const athleteUse4G = slotUse4GRef.current[athleteId] || use4GModeRef.current;
-      const pc = new RTCPeerConnection(getWebRtcConfig(athleteUse4G));
+      const pc = new RTCPeerConnection(getWebRtcConfig(false));
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[athleteId] = pc;
 
