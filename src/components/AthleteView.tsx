@@ -1705,6 +1705,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
               selectedVideo,
               isMirrored: isMirroredRef.current,
               facingMode: facingModeRef.current,
+              use4GMode: use4GModeRef.current,
               networkType
             });
             break;

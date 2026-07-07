@@ -278,7 +278,14 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
         }
         delete peerConnectionsRef.current[targetId];
       }
-      handleCreateOfferToAthlete(targetId);
+      // CRITICAL BUGFIX: Determine if the target is an OBS receiver or an Athlete client to call the correct connection rebuilder
+      const peer = connectedPeers[targetId];
+      const isObs = (peer && peer.role === "obs") || targetId === "obs" || targetId.startsWith("obs_");
+      if (isObs) {
+        handleCreateOfferToOBS(targetId);
+      } else {
+        handleCreateOfferToAthlete(targetId);
+      }
     });
   };
 
@@ -1137,6 +1144,11 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                   handleCreateOfferToAthlete(data.senderId);
                 }, 250);
               }
+              // Update ref immediately to prevent WebRTC initialization race conditions
+              slotUse4GRef.current = {
+                ...slotUse4GRef.current,
+                [data.senderId]: data.use4GMode
+              };
               setSlotUse4G(prev => ({
                 ...prev,
                 [data.senderId]: data.use4GMode

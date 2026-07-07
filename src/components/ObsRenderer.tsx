@@ -760,6 +760,11 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                 cleanupSignalingStateForPeer(data.senderId);
                 requestPeerStream(data.senderId);
               }
+              // Update ref immediately to prevent WebRTC initialization race conditions
+              slotUse4GRef.current = {
+                ...slotUse4GRef.current,
+                [data.senderId]: data.use4GMode
+              };
               setSlotUse4G(prev => ({
                 ...prev,
                 [data.senderId]: data.use4GMode
