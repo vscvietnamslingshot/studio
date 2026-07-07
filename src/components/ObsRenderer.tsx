@@ -2082,7 +2082,9 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
             {activePeers.map(([peerId, info], idx) => {
               const pos = settings.peerPositions?.[peerId] || getInitialPosition(idx, activePeers.length);
               const isMC = info.role === "host" || peerId === "host";
-              const zIndexStyle = isMC ? 50 : (settings.peerOrder ? settings.peerOrder.indexOf(peerId) + 10 : 10 + idx);
+              const zIndexStyle = settings.peerOrder && settings.peerOrder.indexOf(peerId) !== -1 
+                ? settings.peerOrder.indexOf(peerId) + 10 
+                : (isMC ? 50 : 10 + idx);
               const isPip = settings.pipPeers?.[peerId] ?? false;
               return (
                 <div

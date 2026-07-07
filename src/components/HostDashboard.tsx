@@ -1634,11 +1634,16 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
 
   const movePeerOrder = (peerId: string, direction: "up" | "down") => {
     setSettings(prev => {
+      // Find both connected and unconnected slots to build activeIds
+      const slotIds = [0, 1].slice(0, prev.visibleSlotsCount ?? 1).map(idx => {
+        const athlete = (Object.values(connectedPeers) as ConnectedPeer[])
+          .find(p => p.role === "athlete" && (p.id === `inv_${idx + 1}` || p.id === prev.athleteInvites?.[idx]?.id));
+        return athlete ? athlete.id : (prev.athleteInvites?.[idx]?.id || `inv_${idx + 1}`);
+      });
+
       const activeIds = [
         "host",
-        ...(Object.values(connectedPeers) as ConnectedPeer[])
-          .filter(p => p.role === "athlete")
-          .map(p => p.id)
+        ...slotIds
       ];
 
       let currentOrder = prev.peerOrder ? [...prev.peerOrder] : [];
@@ -2646,122 +2651,109 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                                   </button>
                                 </div>
 
-                                {/* Kick/Xóa */}
+                                {/* Kick/Xóa Slot */}
                                 <button
                                   onClick={() => {
-                                    if (confirm(`Bạn có chắc chắn muốn xóa VĐV ${athlete.name} ra khỏi phòng?`)) {
-                                      sendRemoteControl(athlete.id, "kick", true);
+                                    if (confirm(`Bạn có chắc chắn muốn xóa VĐV ${athlete.name} và đóng Slot này?`)) {
+                                      handleDeleteAthleteSlot(index, athlete.id);
                                     }
                                   }}
                                   className="py-1 rounded font-mono font-bold border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer text-[7px] flex items-center justify-center gap-0.5"
-                                  title="Xóa VĐV này khỏi phòng thi đấu"
+                                  title="Xóa VĐV này và đóng Slot"
                                 >
-                                  <span>➖ XÓA</span>
+                                  <span>➖ XÓA SLOT</span>
                                 </button>
                               </div>
                             </div>
 
-                            {/* Control row indicators (Image 4 exact simulation) */}
-                            <div className="space-y-1 bg-slate-900 p-1.5 rounded border border-slate-800/60 text-[8px] font-mono">
-                              {/* Row 1: Record / Mute in scene */}
-                              <div className="grid grid-cols-2 gap-1">
-                                <button className="bg-slate-950 border border-slate-800 py-0.5 rounded text-rose-500 font-bold">● RECORD</button>
-                                <button className="bg-slate-950 border border-slate-800 py-0.5 rounded text-slate-400">MUTE IN SCENE</button>
-                              </div>
+                            {/* CẤU HÌNH CAMERA VĐV (Tỉ lệ, Xoay, Hiển thị, Lật gương) - Moved here directly below Display Config */}
+                            <div className="bg-slate-900 p-1.5 rounded border border-slate-800/80 space-y-1.5">
+                              <span className="block text-[7px] font-mono text-slate-500 font-bold uppercase tracking-wider">CẤU HÌNH CAMERA VĐV</span>
+                              <div className="grid grid-cols-4 gap-1.5">
+                                {/* Tỉ lệ */}
+                                <div className="space-y-0.5">
+                                  <span className="text-slate-500 block text-[7px] font-bold uppercase">TỈ LỆ</span>
+                                  <div className="flex gap-0.5">
+                                    {(["16:9", "9:16"] as const).map(asp => (
+                                      <button
+                                        key={asp}
+                                        type="button"
+                                        onClick={() => updateCameraTransform(athlete.id, "aspect", asp)}
+                                        className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
+                                          (settings.cameraAspects?.[athlete.id] ?? "16:9") === asp
+                                            ? "bg-cyan-500 text-black font-black"
+                                            : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
+                                        }`}
+                                      >
+                                        {asp}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
 
-                              {/* Row 2: Highlight */}
-                              <div className="grid grid-cols-2 gap-1">
-                                <button 
-                                  onClick={() => updateSettingField("highlightedClientId", settings.highlightedClientId === athlete.id ? "" : athlete.id)}
-                                  className={`py-0.5 rounded border font-bold ${settings.highlightedClientId === athlete.id ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-slate-950 border-slate-800 text-slate-400"}`}
-                                >
-                                  {settings.highlightedClientId === athlete.id ? "★ HIGHLIGHTED" : "★ HIGHLIGHT"}
-                                </button>
-                                <button className="bg-slate-950 border border-slate-800 py-0.5 rounded text-cyan-400">ADD TO SCENE 1</button>
-                              </div>
+                                {/* Xoay */}
+                                <div className="space-y-0.5">
+                                  <span className="text-slate-500 block text-[7px] font-bold uppercase">XOAY</span>
+                                  <div className="flex gap-0.5 overflow-x-auto">
+                                    {([0, 90, 180, 270] as const).map(deg => (
+                                      <button
+                                        key={deg}
+                                        type="button"
+                                        onClick={() => updateCameraTransform(athlete.id, "rotation", deg)}
+                                        className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
+                                          (settings.cameraRotations?.[athlete.id] ?? 0) === deg
+                                            ? "bg-cyan-500 text-black font-black"
+                                            : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
+                                        }`}
+                                      >
+                                        {deg}°
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
 
-                              {/* Row 3: Scenes selection buttons */}
-                              <div className="flex items-center gap-0.5 py-0.5">
-                                <span className="text-slate-500 font-bold scale-90">SCENE:</span>
-                                {["s2", "s3", "s4", "s5", "s6", "s7"].map(sc => {
-                                  const active = slotSelectedScene[athlete.id] === sc;
-                                  return (
-                                    <button 
-                                      key={sc}
-                                      onClick={() => setSlotSelectedScene(prev => ({ ...prev, [athlete.id]: sc }))}
-                                      className={`px-1 py-0.2 rounded border text-[7px] font-bold cursor-pointer transition-colors ${
-                                        active ? "bg-cyan-500 text-black border-cyan-500" : "bg-slate-950 border-slate-850 text-slate-400 hover:text-white"
-                                      }`}
-                                    >
-                                      {sc}
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                                {/* Dạng fit */}
+                                <div className="space-y-0.5">
+                                  <span className="text-slate-500 block text-[7px] font-bold uppercase">HIỂN THỊ</span>
+                                  <div className="flex gap-0.5">
+                                    {(["cover", "contain"] as const).map(ft => (
+                                      <button
+                                        key={ft}
+                                        type="button"
+                                        onClick={() => updateCameraTransform(athlete.id, "fit", ft)}
+                                        className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
+                                          (settings.cameraFits?.[athlete.id] ?? "cover") === ft
+                                            ? "bg-cyan-500 text-black font-black"
+                                            : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
+                                        }`}
+                                      >
+                                        {ft === "cover" ? "Full" : "Fit"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
 
-                              {/* Row 4: Camera mix selection buttons */}
-                              <div className="flex items-center gap-0.5 py-0.5">
-                                <span className="text-slate-500 font-bold scale-90">CAM:</span>
-                                {["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"].map(cm => {
-                                  const active = slotSelectedCamMix[athlete.id] === cm;
-                                  return (
-                                    <button 
-                                      key={cm}
-                                      onClick={() => setSlotSelectedCamMix(prev => ({ ...prev, [athlete.id]: cm }))}
-                                      className={`px-1 py-0.2 rounded border text-[7px] font-bold cursor-pointer transition-colors ${
-                                        active ? "bg-purple-500 text-white border-purple-500" : "bg-slate-950 border-slate-850 text-slate-400 hover:text-white"
-                                      }`}
-                                    >
-                                      {cm}
-                                    </button>
-                                  );
-                                })}
+                                {/* Lật gương */}
+                                <div className="space-y-0.5">
+                                  <span className="text-slate-500 block text-[7px] font-bold uppercase">LẬT GƯƠNG</span>
+                                  <div className="flex gap-0.5">
+                                    {([true, false] as const).map(mir => (
+                                      <button
+                                        key={String(mir)}
+                                        type="button"
+                                        onClick={() => updateCameraTransform(athlete.id, "mirror", mir)}
+                                        className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
+                                          (settings.cameraMirroreds?.[athlete.id] ?? false) === mir
+                                            ? "bg-cyan-500 text-black font-black"
+                                            : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
+                                        }`}
+                                      >
+                                        {mir ? "Bật" : "Tắt"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
-
-                              {/* Row 5: Gain selector */}
-                              <div className="flex items-center gap-0.5 py-0.5">
-                                <span className="text-slate-500 font-bold scale-90">GAIN:</span>
-                                {["g1", "g2", "g3", "g4", "g5", "g6"].map(gn => {
-                                  const active = slotSelectedGain[athlete.id] === gn;
-                                  return (
-                                    <button 
-                                      key={gn}
-                                      onClick={() => setSlotSelectedGain(prev => ({ ...prev, [athlete.id]: gn }))}
-                                      className={`px-1 py-0.2 rounded border text-[7px] font-bold cursor-pointer transition-colors ${
-                                        active ? "bg-amber-500 text-black border-amber-500" : "bg-slate-950 border-slate-850 text-slate-400 hover:text-white"
-                                      }`}
-                                    >
-                                      {gn}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Row 6: Mix order modifier */}
-                              <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-800">
-                                <button 
-                                  onClick={() => {
-                                    const currentVal = slotMixOrder[athlete.id] ?? 0;
-                                    setSlotMixOrder(prev => ({ ...prev, [athlete.id]: currentVal - 1 }));
-                                  }}
-                                  className="bg-slate-950 border border-slate-800 px-1 py-0.2 rounded text-slate-400 hover:text-white text-[7px]"
-                                >
-                                  -
-                                </button>
-                                <span className="text-[7px] font-bold font-mono text-slate-500 uppercase">
-                                  {slotMixOrder[athlete.id] ?? 0} MIX ORDER
-                                </span>
-                                <button 
-                                  onClick={() => {
-                                    const currentVal = slotMixOrder[athlete.id] ?? 0;
-                                    setSlotMixOrder(prev => ({ ...prev, [athlete.id]: currentVal + 1 }));
-                                  }}
-                                  className="bg-slate-950 border border-slate-800 px-1 py-0.2 rounded text-slate-400 hover:text-white text-[7px]"
-                                >
-                                  +
-                                </button>
-                              </div>
-
                             </div>
 
                             {/* Quick remote settings collapsible panel */}
@@ -2800,55 +2792,58 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                               </div>
 
                               {openSlotSettings[index] && (
-                                <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 space-y-2 text-[8px] font-mono">
-                                  {/* Resolution selector */}
-                                  <div className="space-y-1">
-                                    <span className="text-slate-400 block font-bold">CHỌN ĐỘ PHÂN GIẢI CỦA VĐV</span>
-                                    <div className="grid grid-cols-3 gap-1">
-                                      {(["1080p", "720p", "480p"] as const).map(res => {
-                                        const active = (slotRes[athlete.id] || "1080p") === res;
-                                        return (
-                                          <button
-                                            key={res}
-                                            onClick={() => {
-                                              setSlotRes(prev => ({ ...prev, [athlete.id]: res }));
-                                              sendRemoteControl(athlete.id, "change-res", res);
-                                            }}
-                                            className={`py-0.5 rounded text-[8px] font-bold cursor-pointer transition-colors ${
-                                              active ? "bg-cyan-500 text-black font-black" : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
-                                            }`}
-                                          >
-                                            {res}
-                                          </button>
-                                        );
-                                      })}
+                                <div className="bg-slate-950 p-2 rounded-lg border border-slate-850/80 space-y-2 text-[8px] font-mono text-slate-400">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {/* Resolution selector */}
+                                    <div className="space-y-1">
+                                      <span className="text-slate-500 block font-bold uppercase">CHỌN ĐỘ PHÂN GIẢI CỦA VĐV</span>
+                                      <div className="grid grid-cols-3 gap-0.5">
+                                        {(["1080p", "720p", "480p"] as const).map(res => {
+                                          const active = (slotRes[athlete.id] || "1080p") === res;
+                                          return (
+                                            <button
+                                              key={res}
+                                              type="button"
+                                              onClick={() => {
+                                                setSlotRes(prev => ({ ...prev, [athlete.id]: res }));
+                                                sendRemoteControl(athlete.id, "change-res", res);
+                                              }}
+                                              className={`py-0.5 rounded text-[7px] font-bold cursor-pointer transition-colors ${
+                                                active ? "bg-cyan-500 text-black font-black" : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+                                              }`}
+                                            >
+                                              {res}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+
+                                    {/* Camera Selector Dropdown */}
+                                    <div className="space-y-1">
+                                      <span className="text-slate-500 block font-bold uppercase">CHỌN THIẾT BỊ CAMERA CỦA VĐV</span>
+                                      <select
+                                        value={slotSelectedVideo[athlete.id] || "auto"}
+                                        onChange={(e) => {
+                                          const devId = e.target.value;
+                                          setSlotSelectedVideo(prev => ({ ...prev, [athlete.id]: devId }));
+                                          sendRemoteControl(athlete.id, "change-camera", devId);
+                                        }}
+                                        className="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-slate-300 text-[8px] focus:outline-none focus:border-cyan-500 cursor-pointer"
+                                      >
+                                        <option value="auto">📹 Tự động nhận diện (Mặc định)</option>
+                                        {athleteDevices[athlete.id]?.map((dev) => (
+                                          <option key={dev.deviceId} value={dev.deviceId}>
+                                            📹 {dev.label || "Camera"}
+                                          </option>
+                                        ))}
+                                      </select>
                                     </div>
                                   </div>
 
-                                  {/* Camera Selector Dropdown */}
-                                  <div className="space-y-1 pt-1 border-t border-slate-950/60">
-                                    <span className="text-slate-400 block font-bold">CHỌN THIẾT BỊ CAMERA CỦA VĐV</span>
-                                    <select
-                                      value={slotSelectedVideo[athlete.id] || "auto"}
-                                      onChange={(e) => {
-                                        const devId = e.target.value;
-                                        setSlotSelectedVideo(prev => ({ ...prev, [athlete.id]: devId }));
-                                        sendRemoteControl(athlete.id, "change-camera", devId);
-                                      }}
-                                      className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-300 text-[8px] focus:outline-none focus:border-cyan-500 cursor-pointer"
-                                    >
-                                      <option value="auto">📹 Tự động nhận diện (Mặc định)</option>
-                                      {athleteDevices[athlete.id]?.map((dev) => (
-                                        <option key={dev.deviceId} value={dev.deviceId}>
-                                          📹 {dev.label || "Camera"}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
                                   {/* Zoom slider */}
-                                  <div className="space-y-1">
-                                    <div className="flex justify-between items-center text-slate-400">
+                                  <div className="space-y-1 pt-1 border-t border-slate-900">
+                                    <div className="flex justify-between items-center text-slate-500">
                                       <span>TĂNG/GIẢM ZOOM CAMERA TỪ XA</span>
                                       <span className="text-cyan-400 font-bold">{slotZoom[athlete.id] ?? 1.0}x</span>
                                     </div>
@@ -2863,14 +2858,14 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                                         setSlotZoom(prev => ({ ...prev, [athlete.id]: val }));
                                         sendRemoteControl(athlete.id, "set-zoom", val);
                                       }}
-                                      className="w-full h-1 bg-slate-950 rounded appearance-none cursor-pointer accent-cyan-400"
+                                      className="w-full h-1 bg-slate-900 rounded appearance-none cursor-pointer accent-cyan-400"
                                     />
                                   </div>
 
                                   {/* Network Bandwidth Allocator (Bitrate selector) */}
-                                  <div className="space-y-1 pt-1.5 border-t border-slate-950">
-                                    <span className="text-slate-400 block font-bold">PHÂN LUỒNG TỐC ĐỘ MẠNG (BITRATE)</span>
-                                    <div className="grid grid-cols-4 gap-1">
+                                  <div className="bg-slate-950 p-1.5 rounded-lg border border-slate-850/80 flex items-center justify-between gap-1.5">
+                                    <span className="text-[8px] font-mono text-slate-500 uppercase tracking-wider font-bold">⚡ TỐC ĐỘ MẠNG VĐV (BITRATE):</span>
+                                    <div className="flex gap-1">
                                       {([1000, 2000, 4000, 6000] as const).map(rate => {
                                         const active = (athleteBitrates[athlete.id] || 2000) === rate;
                                         return (
@@ -2881,108 +2876,16 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                                               setAthleteBitrates(prev => ({ ...prev, [athlete.id]: rate }));
                                               sendRemoteControl(athlete.id, "set-bitrate", rate);
                                             }}
-                                            className={`py-0.5 rounded text-[8px] font-bold cursor-pointer transition-colors ${
-                                              active ? "bg-cyan-500 text-black font-black" : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
+                                            className={`px-1.5 py-0.5 text-[8px] font-bold font-mono rounded border cursor-pointer transition-all ${
+                                              active
+                                                ? "bg-cyan-500/20 border-cyan-500/80 text-cyan-300 font-black"
+                                                : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
                                             }`}
                                           >
-                                            {rate === 1000 ? "1000k (Min)" : `${rate / 1000}M`}
+                                            {rate < 1000 ? `${rate}k` : `${rate / 1000}M`}
                                           </button>
                                         );
                                       })}
-                                    </div>
-                                    <span className="text-[7px] text-slate-500 block leading-tight">
-                                      Giới hạn băng thông gửi đi của VĐV để ưu tiên tốc độ, tránh lag.
-                                    </span>
-                                  </div>
-
-                                  {/* Cấu hình Camera của VĐV */}
-                                  <div className="space-y-1.5 pt-2 border-t border-slate-950">
-                                    <span className="text-slate-400 block font-bold">CẤU HÌNH CAMERA VĐV</span>
-                                    
-                                    <div className="grid grid-cols-4 gap-1.5 mt-1">
-                                      {/* Tỉ lệ */}
-                                      <div className="space-y-0.5">
-                                        <span className="text-slate-500 block text-[7px] font-bold uppercase">TỈ LỆ</span>
-                                        <div className="flex gap-0.5">
-                                          {(["16:9", "9:16"] as const).map(asp => (
-                                            <button
-                                              key={asp}
-                                              type="button"
-                                              onClick={() => updateCameraTransform(athlete.id, "aspect", asp)}
-                                              className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
-                                                (settings.cameraAspects?.[athlete.id] ?? "16:9") === asp
-                                                  ? "bg-cyan-500 text-black font-black"
-                                                  : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
-                                              }`}
-                                            >
-                                              {asp}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-
-                                      {/* Xoay */}
-                                      <div className="space-y-0.5">
-                                        <span className="text-slate-500 block text-[7px] font-bold uppercase">XOAY</span>
-                                        <div className="flex gap-0.5 overflow-x-auto">
-                                          {([0, 90, 180, 270] as const).map(deg => (
-                                            <button
-                                              key={deg}
-                                              type="button"
-                                              onClick={() => updateCameraTransform(athlete.id, "rotation", deg)}
-                                              className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
-                                                (settings.cameraRotations?.[athlete.id] ?? 0) === deg
-                                                  ? "bg-cyan-500 text-black font-black"
-                                                  : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
-                                              }`}
-                                            >
-                                              {deg}°
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-
-                                      {/* Dạng fit */}
-                                      <div className="space-y-0.5">
-                                        <span className="text-slate-500 block text-[7px] font-bold uppercase">HIỂN THỊ</span>
-                                        <div className="flex gap-0.5">
-                                          {(["cover", "contain"] as const).map(ft => (
-                                            <button
-                                              key={ft}
-                                              type="button"
-                                              onClick={() => updateCameraTransform(athlete.id, "fit", ft)}
-                                              className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
-                                                (settings.cameraFits?.[athlete.id] ?? "cover") === ft
-                                                  ? "bg-cyan-500 text-black font-black"
-                                                  : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
-                                              }`}
-                                            >
-                                              {ft === "cover" ? "Full" : "Fit"}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-
-                                      {/* Lật gương */}
-                                      <div className="space-y-0.5">
-                                        <span className="text-slate-500 block text-[7px] font-bold uppercase">LẬT GƯƠNG</span>
-                                        <div className="flex gap-0.5">
-                                          {([true, false] as const).map(mir => (
-                                            <button
-                                              key={String(mir)}
-                                              type="button"
-                                              onClick={() => updateCameraTransform(athlete.id, "mirror", mir)}
-                                              className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
-                                                (settings.cameraMirroreds?.[athlete.id] ?? false) === mir
-                                                  ? "bg-cyan-500 text-black font-black"
-                                                  : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
-                                              }`}
-                                            >
-                                              {mir ? "Bật" : "Tắt"}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
                                     </div>
                                   </div>
                                 </div>
