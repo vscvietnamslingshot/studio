@@ -771,6 +771,21 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
       // Also reconnect if no WebSocket exists, it's CLOSED/CLOSING, or it's a zombie/stuck.
       if (isOnlineEvent || !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING || isZombie || isStuckConnecting) {
         console.log(`[Host Sync] Reconnect triggered (Event: ${e ? e.type : "sync"}, State: ${ws ? ws.readyState : "missing"}, isZombie: ${!!isZombie}, isStuckConnecting: ${!!isStuckConnecting}). Reconnecting...`);
+        
+        if (isOnlineEvent) {
+          console.log("[Host Sync] Network 'online' event detected. Performing aggressive WebRTC handover by destroying existing peer connections...");
+          (Object.entries(peerConnectionsRef.current) as [string, RTCPeerConnection][]).forEach(([peerId, pc]) => {
+            try {
+              pc.onicecandidate = null;
+              pc.onconnectionstatechange = null;
+              pc.oniceconnectionstatechange = null;
+              pc.ontrack = null;
+              pc.close();
+            } catch (err) {}
+            delete peerConnectionsRef.current[peerId];
+          });
+        }
+        
         connectSignaling();
       }
     };

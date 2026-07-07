@@ -565,8 +565,16 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
       console.log("[Network Change] Detected network type change:", conn.type);
       if (conn.type === "cellular") {
         setNetworkType("4G/5G");
+        if (!use4GModeRef.current) {
+          console.log("[Network Change] Switched to cellular. Auto-enabling 4G Mode (Force TURN) to prevent connection issues on mobile NAT.");
+          toggle4GMode(true);
+        }
       } else if (conn.type === "wifi") {
         setNetworkType("WIFI");
+        if (use4GModeRef.current) {
+          console.log("[Network Change] Switched to WiFi. Auto-disabling 4G Mode.");
+          toggle4GMode(false);
+        }
       } else {
         setNetworkType(use4GModeRef.current ? "4G/5G" : "WIFI");
       }
@@ -597,8 +605,9 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
     console.log("[WebRTC] Toggled 4G Mode / Force TURN:", val);
     
     // Auto-adjust resolution and bitrate limits for 4G network performance
-    const targetRes = val ? "480p" : "1080p";
-    const targetBitrate = val ? 600 : 4000;
+    // Since 4G/5G infrastructure is high-quality (>500Mbps), we can comfortably stream 720p at 2500kbps
+    const targetRes = val ? "720p" : "1080p";
+    const targetBitrate = val ? 2500 : 4000;
     
     setResolution(targetRes);
     resolutionRef.current = targetRes;
@@ -859,6 +868,17 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
         // Also reconnect if no WebSocket exists, it's CLOSED/CLOSING, or it's a zombie/stuck.
         if (isOnlineEvent || !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING || isZombie || isStuckConnecting) {
           console.log(`[Athlete Sync] Reconnect triggered (Event: ${e ? e.type : "sync"}, State: ${ws ? ws.readyState : "missing"}, isZombie: ${!!isZombie}, isStuckConnecting: ${!!isStuckConnecting}). Reconnecting...`);
+          
+          if (isOnlineEvent) {
+            // Aggressive Network Handover:
+            // The local IP has changed (WiFi -> 4G). Existing peer connections retain stale candidates
+            // and are 100% dead. Destroy them immediately to force a fresh ICE gathering and handshake.
+            console.log("[Athlete Sync] Aggressive Network Handover: Destroying all stale WebRTC connections...");
+            Object.keys(peerConnectionsRef.current).forEach(peerId => {
+              cleanupSignalingStateForPeer(peerId);
+            });
+          }
+          
           connectSignaling();
         }
 
@@ -1857,6 +1877,19 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
     if ((pc as any).isReconnecting) return;
     (pc as any).isReconnecting = true;
     console.warn(`[Athlete-to-${targetId}] Connection failed/disconnected. Initiating recovery...`);
+
+    // Auto-heal for mobile devices:
+    // If we are on mobile and use4GMode (force TURN) is currently false, a connection failure
+    // is a strong signal that direct P2P/STUN failed due to cellular CGNAT.
+    // Automatically switch on 4G Mode (Force TURN) to establish connection instantly via relay!
+    const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile && !use4GModeRef.current) {
+      console.log(`[Athlete-to-${targetId}] Mobile connection failure detected. Auto-enabling 4G Mode (Force TURN) to bypass carrier CGNAT.`);
+      (pc as any).isReconnecting = false;
+      toggle4GMode(true);
+      return;
+    }
+
     setTimeout(() => {
       if (peerConnectionsRef.current[targetId] === pc) {
         (pc as any).isReconnecting = false;
