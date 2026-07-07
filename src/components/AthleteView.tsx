@@ -345,26 +345,26 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
           }
           await applySenderMaxBitrate(videoSender, 1000, 1.5);
         } else if (isMainObs) {
-          if (localVideoTrack && videoSender.track !== localVideoTrack) {
-            await videoSender.replaceTrack(localVideoTrack).catch(() => {});
-          }
           if (priority === "vsc-overlay") {
             console.log(`[Dynamic Bitrate] [Bandwidth Priority] Enabling VSC Main Overlay stream for ${targetId} at maximum premium quality.`);
+            if (localVideoTrack && videoSender.track !== localVideoTrack) {
+              await videoSender.replaceTrack(localVideoTrack).catch(() => {});
+            }
             await applySenderMaxBitrate(videoSender, currentBitrateRef.current, 1.0);
           } else {
-            console.log(`[Dynamic Bitrate] [Bandwidth Priority] Scaling down VSC Main Overlay stream for ${targetId} to save bandwidth.`);
-            await applySenderMaxBitrate(videoSender, 800, 2.0);
+            console.log(`[Dynamic Bitrate] [Bandwidth Priority] Disabling VSC Main Overlay stream for ${targetId}`);
+            await videoSender.replaceTrack(null).catch(() => {});
           }
         } else if (isSoloLink) {
-          if (localVideoTrack && videoSender.track !== localVideoTrack) {
-            await videoSender.replaceTrack(localVideoTrack).catch(() => {});
-          }
           if (priority === "solo-link") {
             console.log(`[Dynamic Bitrate] [Bandwidth Priority] Enabling Solo Link stream for ${targetId} at maximum premium quality.`);
+            if (localVideoTrack && videoSender.track !== localVideoTrack) {
+              await videoSender.replaceTrack(localVideoTrack).catch(() => {});
+            }
             await applySenderMaxBitrate(videoSender, currentBitrateRef.current, 1.0);
           } else {
-            console.log(`[Dynamic Bitrate] [Bandwidth Priority] Scaling down Solo Link stream for ${targetId} to save bandwidth.`);
-            await applySenderMaxBitrate(videoSender, 800, 2.0);
+            console.log(`[Dynamic Bitrate] [Bandwidth Priority] Disabling Solo Link stream for ${targetId}`);
+            await videoSender.replaceTrack(null).catch(() => {});
           }
         }
       } catch (err) {
@@ -454,13 +454,13 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
       if (priority === "vsc-overlay") {
         return { bitrate: currentBitrateRef.current, scale: 1.0 }; // Full high quality
       } else {
-        return { bitrate: 800, scale: 2.0 }; // Keep active at low quality (360p/540p @ 800kbps)
+        return { bitrate: 0, scale: 4.0, disableVideo: true }; // Shut down completely
       }
     } else if (isSoloLink) {
       if (priority === "solo-link") {
         return { bitrate: currentBitrateRef.current, scale: 1.0 }; // Full quality
       } else {
-        return { bitrate: 800, scale: 2.0 }; // Keep active at low quality (360p/540p @ 800kbps)
+        return { bitrate: 0, scale: 4.0, disableVideo: true }; // Shut down completely
       }
     } else {
       // Connecting to Host/MC Dashboard (Preview) - 720p uniform distribution: 1000 kbps, scale 1.5
@@ -548,14 +548,6 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
     use4GModeRef.current = use4GMode;
   }, [use4GMode]);
 
-  const [forceTurn, setForceTurn] = useState<boolean>(false);
-  const forceTurnRef = useRef<boolean>(false);
-  useEffect(() => {
-    forceTurnRef.current = forceTurn;
-  }, [forceTurn]);
-
-  const isNetworkHandoverRef = useRef<boolean>(false);
-
   const [networkType, setNetworkType] = useState<string>(() => {
     const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
     if (conn) {
@@ -565,61 +557,6 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
     return isCellularStartup() ? "4G/5G" : "WIFI";
   });
 
-  const handleNetworkHandover = async (isCellular: boolean) => {
-    if (isNetworkHandoverRef.current) {
-      console.log("[Network Handover] Handover already in progress. Ignoring duplicate trigger.");
-      return;
-    }
-    isNetworkHandoverRef.current = true;
-    console.log(`[Network Handover] Starting handover sequence. targetIsCellular: ${isCellular}`);
-
-    // 1. Reset Force TURN back to false as we have a fresh network interface
-    setForceTurn(false);
-    forceTurnRef.current = false;
-
-    // 2. Tear down existing PeerConnections and close WebSocket safely
-    if (wsRef.current) {
-      try {
-        wsRef.current.onclose = null;
-        wsRef.current.onerror = null;
-        wsRef.current.close();
-      } catch (e) {}
-      wsRef.current = null;
-    }
-    setWsConnected(false);
-    setWebrtcConnected(false);
-
-    Object.keys(peerConnectionsRef.current).forEach(peerId => {
-      cleanupSignalingStateForPeer(peerId);
-    });
-
-    // 3. Set Quality configurations according to the connection type
-    setUse4GMode(isCellular);
-    use4GModeRef.current = isCellular;
-    localStorage.setItem("webrtc_use_4g_mode", String(isCellular));
-
-    const targetRes = isCellular ? "720p" : "1080p";
-    const targetBitrate = isCellular ? 2500 : 4000;
-
-    setResolution(targetRes);
-    resolutionRef.current = targetRes;
-
-    setCurrentBitrate(targetBitrate);
-    currentBitrateRef.current = targetBitrate;
-
-    console.log(`[Network Handover] Configured quality parameters: ${targetRes} @ ${targetBitrate}kbps for cellular=${isCellular}`);
-
-    // 4. Update the camera stream. This is critical: we await its completion to ensure
-    // we have healthy local tracks BEFORE setting up new WebRTC negotiations.
-    await updateCameraStream(undefined, undefined, targetRes);
-
-    // 5. Connect WebSocket under the new network interface
-    connectSignaling();
-
-    isNetworkHandoverRef.current = false;
-    console.log("[Network Handover] Handover sequence completed successfully.");
-  };
-
   useEffect(() => {
     const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
     if (!conn) return;
@@ -628,16 +565,8 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
       console.log("[Network Change] Detected network type change:", conn.type);
       if (conn.type === "cellular") {
         setNetworkType("4G/5G");
-        if (!use4GModeRef.current) {
-          console.log("[Network Change] Switched to cellular. Auto-enabling 4G Mode (Force TURN) to prevent connection issues on mobile NAT.");
-          handleNetworkHandover(true);
-        }
       } else if (conn.type === "wifi") {
         setNetworkType("WIFI");
-        if (use4GModeRef.current) {
-          console.log("[Network Change] Switched to WiFi. Auto-disabling 4G Mode.");
-          handleNetworkHandover(false);
-        }
       } else {
         setNetworkType(use4GModeRef.current ? "4G/5G" : "WIFI");
       }
@@ -662,7 +591,39 @@ export function AthleteView({ roomId, initialName, athleteId: propAthleteId, onL
   }, [use4GMode]);
 
   const toggle4GMode = async (val: boolean) => {
-    await handleNetworkHandover(val);
+    setUse4GMode(val);
+    use4GModeRef.current = val;
+    localStorage.setItem("webrtc_use_4g_mode", String(val));
+    console.log("[WebRTC] Toggled 4G Mode / Force TURN:", val);
+    
+    // Auto-adjust resolution and bitrate limits for 4G network performance
+    const targetRes = val ? "480p" : "1080p";
+    const targetBitrate = val ? 600 : 4000;
+    
+    setResolution(targetRes);
+    resolutionRef.current = targetRes;
+    
+    setCurrentBitrate(targetBitrate);
+    currentBitrateRef.current = targetBitrate;
+    
+    console.log(`[WebRTC] Auto-applying quality preset: ${targetRes} @ ${targetBitrate}kbps for 4G mode: ${val}`);
+    
+    // Update local camera stream to the new resolution immediately
+    await updateCameraStream(undefined, undefined, targetRes);
+    
+    // Trigger recreation on all active peer connections to apply the new transport policy immediately
+    Object.keys(peerConnectionsRef.current).forEach(targetId => {
+      console.log(`[WebRTC] Destroying and recreating peer connection ${targetId} to apply 4G Mode...`);
+      cleanupSignalingStateForPeer(targetId);
+      if (targetId === "host") {
+        sendOrQueueSignalingMessage({
+          type: "request-stream",
+          targetId: "host"
+        });
+      } else {
+        handleCreateOffer(targetId);
+      }
+    });
   };
 
   const [earphoneEnabled, setEarphoneEnabled] = useState(true);
@@ -898,15 +859,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
         // Also reconnect if no WebSocket exists, it's CLOSED/CLOSING, or it's a zombie/stuck.
         if (isOnlineEvent || !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING || isZombie || isStuckConnecting) {
           console.log(`[Athlete Sync] Reconnect triggered (Event: ${e ? e.type : "sync"}, State: ${ws ? ws.readyState : "missing"}, isZombie: ${!!isZombie}, isStuckConnecting: ${!!isStuckConnecting}). Reconnecting...`);
-          
-          if (isOnlineEvent) {
-            console.log("[Athlete Sync] Aggressive Network Handover online event. Delegating to handleNetworkHandover...");
-            const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
-            const isCell = conn ? (conn.type === "cellular") : use4GModeRef.current;
-            handleNetworkHandover(isCell);
-          } else {
-            connectSignaling();
-          }
+          connectSignaling();
         }
 
         // Verify if local camera stream is active and healthy
@@ -1705,7 +1658,6 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
               selectedVideo,
               isMirrored: isMirroredRef.current,
               facingMode: facingModeRef.current,
-              use4GMode: use4GModeRef.current,
               networkType
             });
             break;
@@ -1905,27 +1857,6 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
     if ((pc as any).isReconnecting) return;
     (pc as any).isReconnecting = true;
     console.warn(`[Athlete-to-${targetId}] Connection failed/disconnected. Initiating recovery...`);
-
-    // Auto-heal for mobile/cellular devices:
-    // If direct P2P/STUN connection failed (forceTurnRef.current is false), 
-    // we should try establishing connection via Force TURN (relay) immediately!
-    if (!forceTurnRef.current) {
-      console.log(`[Athlete-to-${targetId}] Direct connection failed. Auto-enabling Force TURN relay backup to bypass CGNAT/firewalls.`);
-      setForceTurn(true);
-      forceTurnRef.current = true;
-      (pc as any).isReconnecting = false;
-      cleanupSignalingStateForPeer(targetId);
-      if (targetId === "host") {
-        sendOrQueueSignalingMessage({
-          type: "request-stream",
-          targetId: "host"
-        });
-      } else {
-        handleCreateOffer(targetId);
-      }
-      return;
-    }
-
     setTimeout(() => {
       if (peerConnectionsRef.current[targetId] === pc) {
         (pc as any).isReconnecting = false;
@@ -1976,9 +1907,8 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
       }
 
       if (!pc) {
-        const isForceTurnActive = use4GModeRef.current || forceTurnRef.current;
-        console.log(`[Athlete-to-${targetId}] Creating NEW RTCPeerConnection with forceTurn=${isForceTurnActive}...`);
-        pc = new RTCPeerConnection(getWebRtcConfig(isForceTurnActive));
+        console.log(`[Athlete-to-${targetId}] Creating NEW RTCPeerConnection...`);
+        pc = new RTCPeerConnection(getWebRtcConfig(use4GModeRef.current));
         (pc as any).iceCandidatesQueue = [];
         peerConnectionsRef.current[targetId] = pc;
 
@@ -2158,8 +2088,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
       }
 
       console.log(`[Athlete-to-Host] Creating NEW RTCPeerConnection for incoming Offer...`);
-      const isForceTurnActive = use4GModeRef.current || forceTurnRef.current;
-      const pc = new RTCPeerConnection(getWebRtcConfig(isForceTurnActive));
+      const pc = new RTCPeerConnection(getWebRtcConfig(use4GModeRef.current));
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[hostId] = pc;
 
@@ -2333,8 +2262,7 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
 
       if (!pc) {
         console.log(`[Athlete-to-Athlete] Creating NEW RTCPeerConnection for incoming Offer from Athlete ${senderId}...`);
-        const isForceTurnActive = use4GModeRef.current || forceTurnRef.current;
-        pc = new RTCPeerConnection(getWebRtcConfig(isForceTurnActive));
+        pc = new RTCPeerConnection(getWebRtcConfig(use4GModeRef.current));
         (pc as any).iceCandidatesQueue = [];
         peerConnectionsRef.current[senderId] = pc;
       }

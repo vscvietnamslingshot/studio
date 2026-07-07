@@ -278,14 +278,7 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
         }
         delete peerConnectionsRef.current[targetId];
       }
-      // CRITICAL BUGFIX: Determine if the target is an OBS receiver or an Athlete client to call the correct connection rebuilder
-      const peer = connectedPeers[targetId];
-      const isObs = (peer && peer.role === "obs") || targetId === "obs" || targetId.startsWith("obs_");
-      if (isObs) {
-        handleCreateOfferToOBS(targetId);
-      } else {
-        handleCreateOfferToAthlete(targetId);
-      }
+      handleCreateOfferToAthlete(targetId);
     });
   };
 
@@ -778,21 +771,6 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
       // Also reconnect if no WebSocket exists, it's CLOSED/CLOSING, or it's a zombie/stuck.
       if (isOnlineEvent || !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING || isZombie || isStuckConnecting) {
         console.log(`[Host Sync] Reconnect triggered (Event: ${e ? e.type : "sync"}, State: ${ws ? ws.readyState : "missing"}, isZombie: ${!!isZombie}, isStuckConnecting: ${!!isStuckConnecting}). Reconnecting...`);
-        
-        if (isOnlineEvent) {
-          console.log("[Host Sync] Network 'online' event detected. Performing aggressive WebRTC handover by destroying existing peer connections...");
-          (Object.entries(peerConnectionsRef.current) as [string, RTCPeerConnection][]).forEach(([peerId, pc]) => {
-            try {
-              pc.onicecandidate = null;
-              pc.onconnectionstatechange = null;
-              pc.oniceconnectionstatechange = null;
-              pc.ontrack = null;
-              pc.close();
-            } catch (err) {}
-            delete peerConnectionsRef.current[peerId];
-          });
-        }
-        
         connectSignaling();
       }
     };
@@ -1119,36 +1097,6 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
             
             // Sync use4GMode (4G mode) setting
             if (data.use4GMode !== undefined) {
-              const oldVal = slotUse4GRef.current?.[data.senderId];
-              const activePc = peerConnectionsRef.current[data.senderId];
-              const isForceTurnMismatch = data.use4GMode && activePc && !(activePc as any).wasBuiltWithForceTurn;
-
-              if ((oldVal !== undefined && oldVal !== data.use4GMode) || isForceTurnMismatch) {
-                console.log(`[Signaling MC] Athlete ${data.senderId} use4GMode transitioned (old: ${oldVal}, new: ${data.use4GMode}, mismatch: ${!!isForceTurnMismatch}). Destroying current PeerConnection to apply new ICE config.`);
-                if (activePc) {
-                  try {
-                    activePc.onicecandidate = null;
-                    activePc.onconnectionstatechange = null;
-                    activePc.oniceconnectionstatechange = null;
-                    activePc.ontrack = null;
-                    activePc.close();
-                  } catch (e) {
-                    console.warn("Error closing old pc on athlete-state-update:", e);
-                  }
-                  delete peerConnectionsRef.current[data.senderId];
-                }
-
-                // Re-create the connection with the new 4G/TURN configuration
-                setTimeout(() => {
-                  console.log(`[Signaling MC] Re-initiating connection for Athlete ${data.senderId} with updated use4GMode = ${data.use4GMode}`);
-                  handleCreateOfferToAthlete(data.senderId);
-                }, 250);
-              }
-              // Update ref immediately to prevent WebRTC initialization race conditions
-              slotUse4GRef.current = {
-                ...slotUse4GRef.current,
-                [data.senderId]: data.use4GMode
-              };
               setSlotUse4G(prev => ({
                 ...prev,
                 [data.senderId]: data.use4GMode
@@ -1321,10 +1269,9 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
         delete peerConnectionsRef.current[athleteId];
       }
 
-      const athleteUse4G = slotUse4GRef.current?.[athleteId] || false;
-      console.log(`[Signaling MC] Creating NEW RTCPeerConnection for Athlete ${athleteId} with forceTurn=${athleteUse4G}...`);
+      console.log(`[Signaling MC] Creating NEW RTCPeerConnection for Athlete ${athleteId}...`);
+      const athleteUse4G = slotUse4GRef.current[athleteId] || use4GModeRef.current;
       const pc = new RTCPeerConnection(getWebRtcConfig(athleteUse4G));
-      (pc as any).wasBuiltWithForceTurn = athleteUse4G;
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[athleteId] = pc;
 
