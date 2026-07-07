@@ -1584,6 +1584,10 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
     // 3. Add any other connected streams (like OBS receiver or other roles) that were not already added
     Object.entries(peerStreams).forEach(([id, info]) => {
       if (!addedIds.has(id)) {
+        // Athletes should ONLY be visible if they are part of the pre-configured active slots (Step 2)
+        if (info && (info as any).role === "athlete") {
+          return;
+        }
         list.push([id, info as PeerStreamInfo]);
         addedIds.add(id);
       }

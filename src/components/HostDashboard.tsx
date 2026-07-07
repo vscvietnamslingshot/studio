@@ -340,10 +340,49 @@ export function HostDashboard({ roomId, initialMcName, onLeave }: HostDashboardP
       const currentVisible = prev.visibleSlotsCount ?? 1;
       const updatedVisible = Math.max(1, currentVisible - 1);
       
+      const inviteId = currentInvites[index]?.id;
+      let updatedPeerOrder = prev.peerOrder;
+      if (updatedPeerOrder) {
+        updatedPeerOrder = updatedPeerOrder.filter(id => id !== athleteId && id !== inviteId && id !== `inv_${index + 1}`);
+      }
+
       const updated = {
         ...prev,
         athleteInvites: updatedInvites,
-        visibleSlotsCount: updatedVisible
+        visibleSlotsCount: updatedVisible,
+        peerOrder: updatedPeerOrder
+      };
+      syncSettingsToOBS(updated);
+      return updated;
+    });
+  };
+
+  const swapAthleteSlots = () => {
+    setSettings(prev => {
+      const invites = [...(prev.athleteInvites || [])];
+      while (invites.length < 2) {
+        invites.push({ id: `inv_${invites.length + 1}`, name: `Vận động viên ${invites.length + 1}` });
+      }
+
+      const temp = invites[0];
+      invites[0] = invites[1];
+      invites[1] = temp;
+
+      let updatedPeerOrder = prev.peerOrder ? [...prev.peerOrder] : [];
+      const id1 = invites[0].id;
+      const id2 = invites[1].id;
+      const index1 = updatedPeerOrder.indexOf(id1);
+      const index2 = updatedPeerOrder.indexOf(id2);
+      if (index1 !== -1 && index2 !== -1) {
+        const tempOrder = updatedPeerOrder[index1];
+        updatedPeerOrder[index1] = updatedPeerOrder[index2];
+        updatedPeerOrder[index2] = tempOrder;
+      }
+
+      const updated = {
+        ...prev,
+        athleteInvites: invites,
+        peerOrder: updatedPeerOrder.length > 0 ? updatedPeerOrder : undefined
       };
       syncSettingsToOBS(updated);
       return updated;
@@ -2636,16 +2675,36 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                                 {/* Lên / Xuống layer */}
                                 <div className="flex bg-slate-950 border border-slate-850 rounded overflow-hidden">
                                   <button
-                                    onClick={() => movePeerOrder(athlete.id, "down")}
-                                    className="flex-1 py-1 text-center hover:bg-slate-800 text-[8px] text-slate-400 hover:text-white border-r border-slate-850 font-black cursor-pointer"
-                                    title="Hạ thấp lớp xếp chồng (Bị che bên dưới)"
+                                    onClick={() => {
+                                      if (index === 0) {
+                                        swapAthleteSlots();
+                                      }
+                                      movePeerOrder(athlete.id, "down");
+                                    }}
+                                    disabled={index === 1}
+                                    className={`flex-1 py-1 text-center text-[8px] border-r border-slate-850 font-black transition-all ${
+                                      index === 1
+                                        ? "opacity-30 cursor-not-allowed text-slate-600"
+                                        : "hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                                    }`}
+                                    title="Hạ ô giám sát xuống dưới"
                                   >
                                     ▼ DƯỚI
                                   </button>
                                   <button
-                                    onClick={() => movePeerOrder(athlete.id, "up")}
-                                    className="flex-1 py-1 text-center hover:bg-slate-800 text-[8px] text-slate-400 hover:text-white font-black cursor-pointer"
-                                    title="Nâng cao lớp xếp chồng (Đè lên trên)"
+                                    onClick={() => {
+                                      if (index === 1) {
+                                        swapAthleteSlots();
+                                      }
+                                      movePeerOrder(athlete.id, "up");
+                                    }}
+                                    disabled={index === 0}
+                                    className={`flex-1 py-1 text-center text-[8px] font-black transition-all ${
+                                      index === 0
+                                        ? "opacity-30 cursor-not-allowed text-slate-600"
+                                        : "hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                                    }`}
+                                    title="Đưa ô giám sát lên trên"
                                   >
                                     ▲ TRÊN
                                   </button>
@@ -2921,6 +2980,40 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                               className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500/50 rounded px-2.5 py-1 text-[10px] text-white text-center font-sans outline-none font-semibold"
                               placeholder="Nhập tên VĐV..."
                             />
+                          </div>
+
+                          <div className="flex gap-2 w-full justify-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                swapAthleteSlots();
+                              }}
+                              disabled={index === 0}
+                              className={`bg-slate-900 border border-slate-800 text-slate-300 text-[10px] font-bold font-mono px-3 py-1.5 rounded flex items-center gap-1 transition-all ${
+                                index === 0
+                                  ? "opacity-30 cursor-not-allowed"
+                                  : "hover:bg-slate-850 hover:text-white hover:border-slate-700 cursor-pointer"
+                              }`}
+                              title="Đưa ô giám sát lên trên"
+                            >
+                              <span>▲ LÊN</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                swapAthleteSlots();
+                              }}
+                              disabled={index === 1}
+                              className={`bg-slate-900 border border-slate-800 text-slate-300 text-[10px] font-bold font-mono px-3 py-1.5 rounded flex items-center gap-1 transition-all ${
+                                index === 1
+                                  ? "opacity-30 cursor-not-allowed"
+                                  : "hover:bg-slate-850 hover:text-white hover:border-slate-700 cursor-pointer"
+                              }`}
+                              title="Hạ ô giám sát xuống dưới"
+                            >
+                              <span>▼ XUỐNG</span>
+                            </button>
                           </div>
 
                           <div className="flex gap-2 w-full justify-center">
