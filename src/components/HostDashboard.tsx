@@ -1112,6 +1112,23 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
             
             // Sync use4GMode (4G mode) setting
             if (data.use4GMode !== undefined) {
+              const oldVal = slotUse4GRef.current?.[data.senderId];
+              if (oldVal !== undefined && oldVal !== data.use4GMode) {
+                console.log(`[Signaling MC] Athlete ${data.senderId} use4GMode changed from ${oldVal} to ${data.use4GMode}. Destroying current PeerConnection to force new ICE config.`);
+                const activePc = peerConnectionsRef.current[data.senderId];
+                if (activePc) {
+                  try {
+                    activePc.onicecandidate = null;
+                    activePc.onconnectionstatechange = null;
+                    activePc.oniceconnectionstatechange = null;
+                    activePc.ontrack = null;
+                    activePc.close();
+                  } catch (e) {
+                    console.warn("Error closing old pc on athlete-state-update:", e);
+                  }
+                  delete peerConnectionsRef.current[data.senderId];
+                }
+              }
               setSlotUse4G(prev => ({
                 ...prev,
                 [data.senderId]: data.use4GMode
@@ -1284,8 +1301,9 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
         delete peerConnectionsRef.current[athleteId];
       }
 
-      console.log(`[Signaling MC] Creating NEW RTCPeerConnection for Athlete ${athleteId}...`);
-      const pc = new RTCPeerConnection(getWebRtcConfig(false));
+      const athleteUse4G = slotUse4GRef.current?.[athleteId] || false;
+      console.log(`[Signaling MC] Creating NEW RTCPeerConnection for Athlete ${athleteId} with forceTurn=${athleteUse4G}...`);
+      const pc = new RTCPeerConnection(getWebRtcConfig(athleteUse4G));
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[athleteId] = pc;
 

@@ -308,6 +308,11 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
   };
 
   const [peerStreams, setPeerStreams] = useState<Record<string, PeerStreamInfo>>({});
+  const [slotUse4G, setSlotUse4G] = useState<Record<string, boolean>>({});
+  const slotUse4GRef = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    slotUse4GRef.current = slotUse4G;
+  }, [slotUse4G]);
   const [showConfetti, setShowConfetti] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [showScoreboardCropMenu, setShowScoreboardCropMenu] = useState(false);
@@ -741,6 +746,24 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
             }
             break;
 
+          case "athlete-state-update":
+            console.log("[OBS Renderer] Nhận trạng thái cập nhật từ VĐV:", data.senderId, data);
+            
+            // Sync use4GMode (4G mode) setting for athlete
+            if (data.use4GMode !== undefined) {
+              const oldVal = slotUse4GRef.current?.[data.senderId];
+              if (oldVal !== undefined && oldVal !== data.use4GMode) {
+                console.log(`[OBS Renderer] Athlete ${data.senderId} use4GMode changed from ${oldVal} to ${data.use4GMode}. Closing current PC to force new ICE config.`);
+                cleanupSignalingStateForPeer(data.senderId);
+                requestPeerStream(data.senderId);
+              }
+              setSlotUse4G(prev => ({
+                ...prev,
+                [data.senderId]: data.use4GMode
+              }));
+            }
+            break;
+
           case "trigger-vfx":
             if (data.name === "confetti") {
               setShowConfetti(true);
@@ -831,7 +854,12 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
       console.log(`[OBS Renderer] Receiving WebRTC Offer from ${peerId}. Cleaning up prior state to avoid collisions...`);
       cleanupSignalingStateForPeer(peerId);
 
-      const pc = new RTCPeerConnection(getWebRtcConfig(false));
+      const isHost = peerId === "host" || peerId.startsWith("host");
+      const peerUse4G = isHost 
+        ? (settings.use4GMode || false) 
+        : (slotUse4GRef.current?.[peerId] || false);
+      console.log(`[OBS Renderer] Creating RTCPeerConnection for ${peerId} (isHost=${isHost}) with forceTurn=${peerUse4G}...`);
+      const pc = new RTCPeerConnection(getWebRtcConfig(peerUse4G));
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[peerId] = pc;
 
