@@ -33,6 +33,7 @@ export interface StreamSettings {
   cameraRotations?: Record<string, number>; // key: peerId, value: degrees (0, 90, 180, 270)
   cameraAspects?: Record<string, "16:9" | "9:16">; // key: peerId, value: aspect ratio (normal 16:9 or vertical 9:16)
   cameraFits?: Record<string, "cover" | "contain">; // key: peerId, value: "cover" or "contain"
+  cameraMirroreds?: Record<string, boolean>; // key: peerId, value: boolean (whether is mirrored)
   
   // Custom graphics overlay, positions, cropping, layering, and hidden states
   hiddenPeers?: Record<string, boolean>; // key: peerId, value: hidden state

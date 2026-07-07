@@ -2153,14 +2153,16 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                   <div className={isPreview ? "relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl border border-white/10" : "relative w-full h-full"}>
                     {/* Main Full-size video */}
                     {mainPeer && (
-                      <video
+                       <video
                         autoPlay
                         playsInline
                         className="w-full h-full object-cover"
                         style={{
-                          transform: mainPeer.isMirrored !== undefined
-                            ? (mainPeer.isMirrored ? "scaleX(-1)" : "scaleX(1)")
-                            : (mainPeer.role === "athlete" ? "scaleX(-1)" : "scaleX(1)")
+                          transform: settings.cameraMirroreds?.[mainPeerId] !== undefined
+                            ? (settings.cameraMirroreds[mainPeerId] ? "scaleX(-1)" : "scaleX(1)")
+                            : (mainPeer.isMirrored !== undefined
+                                ? (mainPeer.isMirrored ? "scaleX(-1)" : "scaleX(1)")
+                                : (mainPeer.role === "athlete" ? "scaleX(-1)" : "scaleX(1)"))
                         }}
                         ref={el => {
                           if (el) {
@@ -2199,9 +2201,11 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                             playsInline
                             className="w-full h-full object-cover"
                             style={{
-                              transform: pipPeer.isMirrored !== undefined
-                                ? (pipPeer.isMirrored ? "scaleX(-1)" : "scaleX(1)")
-                                : (pipPeer.role === "athlete" ? "scaleX(-1)" : "scaleX(1)")
+                              transform: settings.cameraMirroreds?.[pipPeerId] !== undefined
+                                ? (settings.cameraMirroreds[pipPeerId] ? "scaleX(-1)" : "scaleX(1)")
+                                : (pipPeer.isMirrored !== undefined
+                                    ? (pipPeer.isMirrored ? "scaleX(-1)" : "scaleX(1)")
+                                    : (pipPeer.role === "athlete" ? "scaleX(-1)" : "scaleX(1)"))
                             }}
                             ref={el => {
                               if (el) {
@@ -2211,7 +2215,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
                                   console.log(`[MEDIA_PIPELINE] [OBS pip video] srcObject ASSIGNED new stream. readyState: ${el.readyState}`);
                                 }
                                 el.muted = isPreview;
-                                el.play().catch(e => console.log(e));
+                                  el.play().catch(e => console.log(e));
                               }
                             }}
                           />
@@ -3280,9 +3284,12 @@ function ObsVideoCard({
         playsInline
         style={{
           transform: `rotate(${rotation}deg) ${
-            info.isMirrored !== undefined
-              ? (info.isMirrored ? "scaleX(-1)" : "")
-              : (!isHost ? "scaleX(-1)" : "")
+            settings.cameraMirroreds?.[peerId] !== undefined
+              ? (settings.cameraMirroreds[peerId] ? "scaleX(-1)" : "scaleX(1)")
+              : (info.isMirrored !== undefined
+                  ? (info.isMirrored ? "scaleX(-1)" : "")
+                  : (!isHost ? "scaleX(-1)" : "")
+                )
           }`
         }}
         className={`w-full h-full transition-all duration-300 ${videoClass}`}

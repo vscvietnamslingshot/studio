@@ -1582,11 +1582,12 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
     });
   };
 
-  const updateCameraTransform = (peerId: string, type: "rotation" | "aspect" | "fit", value: any) => {
+  const updateCameraTransform = (peerId: string, type: "rotation" | "aspect" | "fit" | "mirror", value: any) => {
     setSettings(prev => {
       const nextRotations = { ...prev.cameraRotations || {} };
       const nextAspects = { ...prev.cameraAspects || {} };
       const nextFits = { ...prev.cameraFits || {} };
+      const nextMirroreds = { ...prev.cameraMirroreds || {} };
 
       if (type === "rotation") {
         nextRotations[peerId] = value;
@@ -1594,13 +1595,16 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
         nextAspects[peerId] = value;
       } else if (type === "fit") {
         nextFits[peerId] = value;
+      } else if (type === "mirror") {
+        nextMirroreds[peerId] = value;
       }
 
       const updated = {
         ...prev,
         cameraRotations: nextRotations,
         cameraAspects: nextAspects,
-        cameraFits: nextFits
+        cameraFits: nextFits,
+        cameraMirroreds: nextMirroreds
       };
       
       syncSettingsToOBS(updated);
@@ -1858,7 +1862,7 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                     name: "MC Ban Tổ Chức",
                     role: "host",
                     stream: localStream,
-                    isMirrored: false
+                    isMirrored: settings.cameraMirroreds?.["host"] ?? false
                   };
                 }
                 
@@ -2155,8 +2159,8 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                   </div>
                 </div>
 
-                {/* Sub-controls: Rotation, Aspect, Fit */}
-                <div className="grid grid-cols-3 gap-1.5 text-[8px] font-mono text-slate-400">
+                {/* Sub-controls: Rotation, Aspect, Fit, Mirror */}
+                <div className="grid grid-cols-4 gap-1.5 text-[8px] font-mono text-slate-400">
                   {/* Aspect */}
                   <div className="space-y-0.5">
                     <span className="block text-slate-500 font-bold">TỈ LỆ CAM</span>
@@ -2212,6 +2216,26 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                           }`}
                         >
                           {ft === "cover" ? "Full" : "Fit"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Mirror */}
+                  <div className="space-y-0.5">
+                    <span className="block text-slate-500 font-bold">LẬT GƯƠNG</span>
+                    <div className="flex gap-0.5">
+                      {([true, false] as const).map(mir => (
+                        <button
+                          key={String(mir)}
+                          onClick={() => updateCameraTransform("host", "mirror", mir)}
+                          className={`px-1 py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center border transition-all ${
+                            (settings.cameraMirroreds?.["host"] ?? false) === mir
+                              ? "bg-purple-500/20 border-purple-500/80 text-purple-300 font-black"
+                              : "bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-300"
+                          }`}
+                        >
+                          {mir ? "BẬT" : "TẮT"}
                         </button>
                       ))}
                     </div>
@@ -2875,7 +2899,7 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                                   <div className="space-y-1.5 pt-2 border-t border-slate-950">
                                     <span className="text-slate-400 block font-bold">CẤU HÌNH CAMERA VĐV</span>
                                     
-                                    <div className="grid grid-cols-3 gap-1.5 mt-1">
+                                    <div className="grid grid-cols-4 gap-1.5 mt-1">
                                       {/* Tỉ lệ */}
                                       <div className="space-y-0.5">
                                         <span className="text-slate-500 block text-[7px] font-bold uppercase">TỈ LỆ</span>
@@ -2934,6 +2958,27 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                                               }`}
                                             >
                                               {ft === "cover" ? "Full" : "Fit"}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* Lật gương */}
+                                      <div className="space-y-0.5">
+                                        <span className="text-slate-500 block text-[7px] font-bold uppercase">LẬT GƯƠNG</span>
+                                        <div className="flex gap-0.5">
+                                          {([true, false] as const).map(mir => (
+                                            <button
+                                              key={String(mir)}
+                                              type="button"
+                                              onClick={() => updateCameraTransform(athlete.id, "mirror", mir)}
+                                              className={`py-0.5 rounded text-[7px] font-bold cursor-pointer flex-1 text-center transition-colors ${
+                                                (settings.cameraMirroreds?.[athlete.id] ?? false) === mir
+                                                  ? "bg-cyan-500 text-black font-black"
+                                                  : "bg-slate-950 border border-slate-850 text-slate-400 hover:text-white"
+                                              }`}
+                                            >
+                                              {mir ? "Bật" : "Tắt"}
                                             </button>
                                           ))}
                                         </div>
