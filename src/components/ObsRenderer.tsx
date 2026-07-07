@@ -752,8 +752,11 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
             // Sync use4GMode (4G mode) setting for athlete
             if (data.use4GMode !== undefined) {
               const oldVal = slotUse4GRef.current?.[data.senderId];
-              if (oldVal !== undefined && oldVal !== data.use4GMode) {
-                console.log(`[OBS Renderer] Athlete ${data.senderId} use4GMode changed from ${oldVal} to ${data.use4GMode}. Closing current PC to force new ICE config.`);
+              const activePc = peerConnectionsRef.current[data.senderId];
+              const isForceTurnMismatch = data.use4GMode && activePc && !(activePc as any).wasBuiltWithForceTurn;
+
+              if ((oldVal !== undefined && oldVal !== data.use4GMode) || isForceTurnMismatch) {
+                console.log(`[OBS Renderer] Athlete ${data.senderId} use4GMode transitioned (old: ${oldVal}, new: ${data.use4GMode}, mismatch: ${!!isForceTurnMismatch}). Closing current PC to force new ICE config.`);
                 cleanupSignalingStateForPeer(data.senderId);
                 requestPeerStream(data.senderId);
               }
@@ -860,6 +863,7 @@ export function ObsRenderer({ roomId, isPreview = false, settings: propSettings,
         : (slotUse4GRef.current?.[peerId] || false);
       console.log(`[OBS Renderer] Creating RTCPeerConnection for ${peerId} (isHost=${isHost}) with forceTurn=${peerUse4G}...`);
       const pc = new RTCPeerConnection(getWebRtcConfig(peerUse4G));
+      (pc as any).wasBuiltWithForceTurn = peerUse4G;
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[peerId] = pc;
 

@@ -1113,9 +1113,11 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
             // Sync use4GMode (4G mode) setting
             if (data.use4GMode !== undefined) {
               const oldVal = slotUse4GRef.current?.[data.senderId];
-              if (oldVal !== undefined && oldVal !== data.use4GMode) {
-                console.log(`[Signaling MC] Athlete ${data.senderId} use4GMode changed from ${oldVal} to ${data.use4GMode}. Destroying current PeerConnection to force new ICE config.`);
-                const activePc = peerConnectionsRef.current[data.senderId];
+              const activePc = peerConnectionsRef.current[data.senderId];
+              const isForceTurnMismatch = data.use4GMode && activePc && !(activePc as any).wasBuiltWithForceTurn;
+
+              if ((oldVal !== undefined && oldVal !== data.use4GMode) || isForceTurnMismatch) {
+                console.log(`[Signaling MC] Athlete ${data.senderId} use4GMode transitioned (old: ${oldVal}, new: ${data.use4GMode}, mismatch: ${!!isForceTurnMismatch}). Destroying current PeerConnection to apply new ICE config.`);
                 if (activePc) {
                   try {
                     activePc.onicecandidate = null;
@@ -1128,6 +1130,12 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
                   }
                   delete peerConnectionsRef.current[data.senderId];
                 }
+
+                // Re-create the connection with the new 4G/TURN configuration
+                setTimeout(() => {
+                  console.log(`[Signaling MC] Re-initiating connection for Athlete ${data.senderId} with updated use4GMode = ${data.use4GMode}`);
+                  handleCreateOfferToAthlete(data.senderId);
+                }, 250);
               }
               setSlotUse4G(prev => ({
                 ...prev,
@@ -1304,6 +1312,7 @@ function createMockMCStream(label: string = "HOST / MC SIMULATOR"): MediaStream 
       const athleteUse4G = slotUse4GRef.current?.[athleteId] || false;
       console.log(`[Signaling MC] Creating NEW RTCPeerConnection for Athlete ${athleteId} with forceTurn=${athleteUse4G}...`);
       const pc = new RTCPeerConnection(getWebRtcConfig(athleteUse4G));
+      (pc as any).wasBuiltWithForceTurn = athleteUse4G;
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[athleteId] = pc;
 

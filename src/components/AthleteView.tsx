@@ -1975,8 +1975,9 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
       }
 
       if (!pc) {
-        console.log(`[Athlete-to-${targetId}] Creating NEW RTCPeerConnection with forceTurn=${forceTurnRef.current}...`);
-        pc = new RTCPeerConnection(getWebRtcConfig(forceTurnRef.current));
+        const isForceTurnActive = use4GModeRef.current || forceTurnRef.current;
+        console.log(`[Athlete-to-${targetId}] Creating NEW RTCPeerConnection with forceTurn=${isForceTurnActive}...`);
+        pc = new RTCPeerConnection(getWebRtcConfig(isForceTurnActive));
         (pc as any).iceCandidatesQueue = [];
         peerConnectionsRef.current[targetId] = pc;
 
@@ -2156,7 +2157,8 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
       }
 
       console.log(`[Athlete-to-Host] Creating NEW RTCPeerConnection for incoming Offer...`);
-      const pc = new RTCPeerConnection(getWebRtcConfig(use4GModeRef.current));
+      const isForceTurnActive = use4GModeRef.current || forceTurnRef.current;
+      const pc = new RTCPeerConnection(getWebRtcConfig(isForceTurnActive));
       (pc as any).iceCandidatesQueue = [];
       peerConnectionsRef.current[hostId] = pc;
 
@@ -2330,7 +2332,8 @@ function createMockAthleteStream(label: string = "ATHLETE SIMULATOR"): MediaStre
 
       if (!pc) {
         console.log(`[Athlete-to-Athlete] Creating NEW RTCPeerConnection for incoming Offer from Athlete ${senderId}...`);
-        pc = new RTCPeerConnection(getWebRtcConfig(use4GModeRef.current));
+        const isForceTurnActive = use4GModeRef.current || forceTurnRef.current;
+        pc = new RTCPeerConnection(getWebRtcConfig(isForceTurnActive));
         (pc as any).iceCandidatesQueue = [];
         peerConnectionsRef.current[senderId] = pc;
       }
